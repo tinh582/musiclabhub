@@ -1,0 +1,588 @@
+import { useRef, useState, useEffect } from 'react';
+
+function autoCorrelate(buffer, sampleRate) {
+  const size = buffer.length;
+  let rms = 0;
+  for (let i = 0; i < size; i += 1) {
+    rms += buffer[i] * buffer[i];
+  }
+  rms = Math.sqrt(rms / size);
+  if (rms < 0.01) return -1;
+
+  let bestOffset = -1;
+  let bestCorrelation = 0;
+  const correlations = new Array(size).fill(0);
+
+  for (let offset = 0; offset < size; offset += 1) {
+    let correlation = 0;
+    for (let i = 0; i < size - offset; i += 1) {
+      correlation += Math.abs(buffer[i] - buffer[i + offset]);
+    }
+    correlation = 1 - correlation / size;
+    correlations[offset] = correlation;
+    if (correlation > bestCorrelation) {
+      bestCorrelation = correlation;
+      bestOffset = offset;
+    }
+  }
+
+  if (bestCorrelation > 0.01 && bestOffset > 0) {
+    return sampleRate / bestOffset;
+  }
+  return -1;
+}
+
+function frequencyToNoteName(frequency) {
+  const noteNumber = 12 * (Math.log(frequency / 440) / Math.log(2)) + 69;
+  const roundedNumber = Math.round(noteNumber);
+  const octave = Math.floor(roundedNumber / 12) - 1;
+  const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  const noteName = noteNames[((roundedNumber % 12) + 12) % 12];
+  return `${noteName}${octave}`;
+}
+
+export function TranscriptionLab() {
+  const fileRef = useRef(null);
+  const canvasRef = useRef(null);
+  const pianoRef = useRef(null);
+  const audioCtxRef = useRef(null);
+  const sourceRef = useRef(null);
+  const workerRef = useRef(null);
+  const bufferRef = useRef(null);
+  const [bufferDuration, setBufferDuration] = useState(0);
+  const [notes, setNotes] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [xmlPreview, setXmlPreview] = useState('');
+  const [tempo, setTempo] = useState(120);
+  const [resolution, setResolution] = useState(16);
+  const [triplet, setTriplet] = useState(false);
+  const [swing, setSwing] = useState(0); // 0..0.5 fraction
+  const scheduledRef = useRef([]);
+  const playbackStartRef = useRef(null);
+  const animationRef = useRef(null);
+
+  const sampleTracks = [
+    { label: 'Sample 1', url: '/audio/sample1.mp3' },
+    { label: 'Sample 2', url: '/audio/sample2.mp3' },
+    { label: 'Sample 3', url: '/audio/sample3.mp3' },
+    { label: 'Sample 4', url: '/audio/sample4.mp3' },
+    { label: 'Sample 5', url: '/audio/sample5.mp3' },
+    { label: 'Sample 6', url: '/audio/sample6.mp3' },
+    { label: 'Sample 7', url: '/audio/sample7.mp3' },
+  ];
+
+  useEffect(() => {
+    // create worker
+    workerRef.current = new Worker(new URL('../workers/pitchWorker.js', import.meta.url), { type: 'module' });
+    workerRef.current.postMessage({ cmd: 'init', sampleRate: 44100 });
+    workerRef.current.onmessage = (ev) => {
+      const data = ev.data;
+      if (data.status === 'done') {
+        const events = data.events.map((it) => ({ time: it.time, frequency: it.frequency, note: it.frequency ? frequencyToNoteName(it.frequency) : '—' }));
+        setNotes(events);
+        drawPianoRoll(events, data.duration);
+      }
+    };
+
+    return () => {
+      if (workerRef.current) {
+        workerRef.current.terminate();
+        workerRef.current = null;
+      }
+    };
+  }, []);
+
+  async function processArrayBuffer(arrayBuffer) {
+    if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    const audioBuffer = await audioCtxRef.current.decodeAudioData(arrayBuffer);
+    bufferRef.current = audioBuffer;
+    setBufferDuration(audioBuffer.duration);
+    drawWaveform(audioBuffer);
+    // send channel data to worker for detection
+    const channelData = audioBuffer.getChannelData(0).slice();
+    workerRef.current.postMessage({ cmd: 'detect', audioBuffer: channelData.buffer, sampleRate: audioBuffer.sampleRate }, [channelData.buffer]);
+  }
+
+  async function handleFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setLoading(true);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      await processArrayBuffer(arrayBuffer);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadSampleByValue(value) {
+    const track = sampleTracks.find((t) => t.url === value);
+    if (!track) return;
+    setLoading(true);
+    try {
+      if (fileRef.current) fileRef.current.value = '';
+      const resp = await fetch(track.url);
+      const arrayBuffer = await resp.arrayBuffer();
+      await processArrayBuffer(arrayBuffer);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function drawWaveform(audioBuffer) {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const width = canvas.width = canvas.clientWidth * devicePixelRatio;
+    const height = canvas.height = 120 * devicePixelRatio;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = 'rgba(255,255,255,0.04)';
+    ctx.fillRect(0, 0, width, height);
+
+    const data = audioBuffer.numberOfChannels > 0 ? audioBuffer.getChannelData(0) : new Float32Array(0);
+    const step = Math.ceil(data.length / width);
+    const amp = height / 2;
+    ctx.fillStyle = 'rgba(110,240,209,0.6)';
+    for (let i = 0; i < width; i += 1) {
+      let min = 1.0;
+      let max = -1.0;
+      for (let j = 0; j < step; j += 1) {
+        const datum = data[(i * step) + j];
+        if (datum < min) min = datum;
+        if (datum > max) max = datum;
+      }
+      ctx.fillRect(i, (1 + min) * amp, 1, Math.max(1, (max - min) * amp));
+    }
+  }
+
+  function drawPianoRoll(events, duration, now = null) {
+    const canvas = pianoRef.current;
+    if (!canvas) return;
+    const width = (canvas.width = canvas.clientWidth * devicePixelRatio);
+    const height = (canvas.height = 160 * devicePixelRatio);
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, width, height);
+    // draw keyboard background
+    ctx.fillStyle = 'rgba(255,255,255,0.02)';
+    ctx.fillRect(0, 0, width, height);
+
+    const midiOf = (note) => {
+      const m = note.match(/([A-G])(#?)(-?\d+)/);
+      if (!m) return 60;
+      const name = m[1];
+      const sharp = m[2] === '#';
+      const octave = Number(m[3]);
+      const base = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[name];
+      return base + (sharp ? 1 : 0) + (octave + 1) * 12;
+    };
+
+    // find range
+    const midis = events.map((ev) => (ev.frequency ? midiOf(frequencyToNoteName(ev.frequency)) : 60));
+    const minMidi = Math.min(...midis, 48);
+    const maxMidi = Math.max(...midis, 84);
+    const midiRange = Math.max(12, maxMidi - minMidi + 1);
+
+    events.forEach((ev) => {
+      const midi = ev.frequency ? midiOf(frequencyToNoteName(ev.frequency)) : null;
+      const x = (ev.time / duration) * width;
+      const dur = ev.qDur || ev.duration || 0.2;
+      const w = Math.max(6, (dur / duration) * width);
+      const y = height - ((midi - minMidi) / midiRange) * height - 20;
+      ctx.fillStyle = 'rgba(110,240,209,0.9)';
+      ctx.fillRect(x, y, w, 16);
+    });
+
+    // draw playback cursor if now provided (seconds from start)
+    if (now != null) {
+      const x = (now / duration) * width;
+      ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+      ctx.lineWidth = 1 * devicePixelRatio;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    }
+  }
+
+  function quantizeEvents(events, tempoBPM, resolutionInput = 16, tripletFlag = false, swingFrac = 0) {
+    if (!events || events.length === 0) return [];
+    const beat = 60 / tempoBPM; // quarter note seconds
+    // resolutionInput refers to subdivisions per whole note (e.g., 16 -> 16th notes)
+    const unit = (beat * 4) / resolutionInput; // seconds per grid unit
+    const q = events.map((ev, i) => {
+      // handle triplet subdivision by adjusting unit positions
+      let qIndex = Math.round(ev.time / unit);
+      if (tripletFlag) {
+        // map to nearest triplet grid (3 per quarter -> resolutionInput * 3/4)
+        const tripUnit = unit * (2 / 3); // crude triplet spacing
+        qIndex = Math.round(ev.time / tripUnit);
+      }
+      let qTime = qIndex * unit;
+      // apply swing: move every other 16th forward by swingFrac of unit
+      if (swingFrac > 0) {
+        const posInBeat = ((qIndex % (resolutionInput / 4)) + (resolutionInput / 4)) % (resolutionInput / 4);
+        // apply swing to off-beats (odd subdivisions)
+        if (posInBeat % 2 === 1) {
+          qTime += unit * swingFrac;
+        }
+      }
+      const next = events[i + 1];
+      const rawDur = next ? Math.max(0.02, next.time - ev.time) : unit;
+      const qDur = Math.max(unit, Math.round(rawDur / unit) * unit);
+      return { ...ev, qTime, qDur };
+    });
+    return q;
+  }
+
+  function stopScheduledNotes() {
+    scheduledRef.current.forEach((n) => {
+      try { n.osc.stop(); } catch (e) {}
+      try { n.osc.disconnect(); } catch (e) {}
+    });
+    scheduledRef.current = [];
+  }
+
+  function playQuantized() {
+    if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = audioCtxRef.current;
+    stopScheduledNotes();
+    const q = quantizeEvents(notes, tempo, resolution, triplet, swing);
+    if (q.length === 0) return;
+    const start = ctx.currentTime + 0.2;
+    q.forEach((ev) => {
+      if (!ev.frequency) return;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = ev.frequency;
+      gain.gain.value = 0.06;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      const s = start + ev.qTime;
+      const e = s + ev.qDur;
+      osc.start(s);
+      osc.stop(e);
+      scheduledRef.current.push({ osc, s, e });
+    });
+    // set playing state until last note ends
+    const last = q[q.length - 1];
+    setPlaying(true);
+    const stopAt = start + last.qTime + last.qDur + 0.1;
+    playbackStartRef.current = { start, duration: Math.max(stopAt - start, 0.1), q };
+    // animation loop to update cursor
+    function frame() {
+      const now = ctx.currentTime - start;
+      drawPianoRoll(q, playbackStartRef.current.duration, now);
+      if (now < playbackStartRef.current.duration) {
+        animationRef.current = requestAnimationFrame(frame);
+      }
+    }
+    animationRef.current = requestAnimationFrame(frame);
+    setTimeout(() => {
+      stopScheduledNotes();
+      setPlaying(false);
+      playbackStartRef.current = null;
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    }, (stopAt - ctx.currentTime) * 1000);
+  }
+
+  function exportQuantizedMusicXML() {
+    const q = quantizeEvents(notes, tempo, 16);
+    if (!q || q.length === 0) return;
+    const divisions = 480;
+    const header = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.1 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">\n<score-partwise version="3.1">\n  <part-list>\n    <score-part id=\"P1\">\n      <part-name>Music</part-name>\n    </score-part>\n  </part-list>\n  <part id=\"P1\">\n    <measure number=\"1\">\n      <attributes>\n        <divisions>${divisions}</divisions>\n        <key>\n          <fifths>0</fifths>\n        </key>\n        <time>\n          <beats>4</beats>\n          <beat-type>4</beat-type>\n        </time>\n        <clef>\n          <sign>G</sign>\n          <line>2</line>\n        </clef>\n      </attributes>\n`;
+    let body = '';
+    q.forEach((cur) => {
+      const durSeconds = cur.qDur;
+      const quarters = durSeconds * (tempo / 60);
+      const durationDivs = Math.max(1, Math.round(quarters * divisions));
+      if (!cur.frequency) {
+        body += `      <note>\n        <rest/>\n        <duration>${durationDivs}</duration>\n      </note>\n`;
+      } else {
+        const match = cur.note.match(/([A-G]#?)(-?\d+)/);
+        const step = match ? match[1].replace('#', '') : 'C';
+        const octave = match ? match[2] : '4';
+        const alter = match && match[1].includes('#') ? 1 : 0;
+        body += `      <note>\n        <pitch>\n          <step>${step}</step>\n          ${alter ? '<alter>1</alter>' : ''}\n          <octave>${octave}</octave>\n        </pitch>\n        <duration>${durationDivs}</duration>\n      </note>\n`;
+      }
+    });
+    const footer = '    </measure>\n  </part>\n</score-partwise>';
+    const xml = header + body + footer;
+    setXmlPreview(xml);
+    const blob = new Blob([xml], { type: 'application/xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'transcription-quantized.musicxml';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // minimal MIDI export (Type 0) for quantized events
+  function exportQuantizedMIDI() {
+    const q = quantizeEvents(notes, tempo, resolution, triplet, swing);
+    if (!q || q.length === 0) return;
+    const divisions = 480;
+    // helper to write big-endian ints
+    const bytes = [];
+    function pushByte(b) { bytes.push(b & 0xff); }
+    function pushBytes(arr) { arr.forEach((b) => pushByte(b)); }
+    function pushString(s) { for (let i = 0; i < s.length; i++) pushByte(s.charCodeAt(i)); }
+    function writeVarLen(value) {
+      // variable length quantity
+      let buffer = value & 0x7f;
+      while ((value >>= 7)) {
+        buffer <<= 8;
+        buffer |= ((value & 0x7f) | 0x80);
+      }
+      // write buffer
+      while (true) {
+        pushByte(buffer & 0xff);
+        if (buffer & 0x80) buffer >>= 8; else break;
+      }
+    }
+
+    // header chunk
+    pushString('MThd');
+    pushBytes([0x00,0x00,0x00,0x06]); // header length
+    pushBytes([0x00,0x00]); // format 0
+    pushBytes([0x00,0x01]); // one track
+    pushBytes([(divisions >> 8) & 0xff, divisions & 0xff]);
+
+    // build track data
+    const track = [];
+    function tpush(b) { track.push(b & 0xff); }
+    function tpushBytes(arr) { arr.forEach((b) => tpush(b)); }
+    function tpushVarLen(v) {
+      let buffer = v & 0x7f;
+      while ((v >>= 7)) {
+        buffer <<= 8;
+        buffer |= ((v & 0x7f) | 0x80);
+      }
+      while (true) {
+        tpush(buffer & 0xff);
+        if (buffer & 0x80) buffer >>= 8; else break;
+      }
+    }
+
+    // set tempo meta event
+    const microPerQuarter = Math.round((60 / tempo) * 1000000);
+    tpushVarLen(0);
+    tpushBytes([0xff, 0x51, 0x03, (microPerQuarter >> 16) & 0xff, (microPerQuarter >> 8) & 0xff, microPerQuarter & 0xff]);
+
+    // collect note on/off events as {tick, type, note, vel}
+    const events = [];
+    q.forEach((ev) => {
+      if (!ev.frequency) return;
+      const midi = (() => {
+        const m = ev.note.match(/([A-G])(#?)(-?\d+)/);
+        if (!m) return 60;
+        const name = m[1];
+        const sharp = m[2] === '#';
+        const octave = Number(m[3]);
+        const base = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[name];
+        return base + (sharp ? 1 : 0) + (octave + 1) * 12;
+      })();
+      const tick = Math.round((ev.qTime) * divisions * (tempo / 60));
+      const durTicks = Math.max(1, Math.round(ev.qDur * divisions * (tempo / 60)));
+      events.push({ tick, type: 'on', note: midi, vel: 80 });
+      events.push({ tick: tick + durTicks, type: 'off', note: midi, vel: 64 });
+    });
+    events.sort((a,b) => a.tick - b.tick);
+
+    let lastTick = 0;
+    events.forEach((ev) => {
+      const delta = ev.tick - lastTick;
+      tpushVarLen(delta);
+      if (ev.type === 'on') {
+        tpushBytes([0x90, ev.note & 0xff, ev.vel & 0xff]);
+      } else {
+        tpushBytes([0x80, ev.note & 0xff, ev.vel & 0xff]);
+      }
+      lastTick = ev.tick;
+    });
+
+    // end of track
+    tpushVarLen(0);
+    tpushBytes([0xff, 0x2f, 0x00]);
+
+    // write track chunk header
+    pushString('MTrk');
+    const len = track.length;
+    pushBytes([(len >> 24) & 0xff, (len >> 16) & 0xff, (len >> 8) & 0xff, len & 0xff]);
+    pushBytes(track);
+
+    const arr = new Uint8Array(bytes);
+    const blob = new Blob([arr], { type: 'audio/midi' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'transcription-quantized.mid';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function playBuffer() {
+    if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    if (bufferRef.current) {
+      stopPlayback();
+      const source = audioCtxRef.current.createBufferSource();
+      source.buffer = bufferRef.current;
+      source.connect(audioCtxRef.current.destination);
+      source.start();
+      sourceRef.current = source;
+      setPlaying(true);
+      source.onended = () => setPlaying(false);
+      return;
+    }
+    if (!fileRef.current || !fileRef.current.files[0]) return;
+    const file = fileRef.current.files[0];
+    file.arrayBuffer()
+      .then((arrayBuffer) => audioCtxRef.current.decodeAudioData(arrayBuffer))
+      .then((audioBuffer) => {
+        bufferRef.current = audioBuffer;
+        stopPlayback();
+        const source = audioCtxRef.current.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioCtxRef.current.destination);
+        source.start();
+        sourceRef.current = source;
+        setPlaying(true);
+        source.onended = () => setPlaying(false);
+      })
+      .catch(console.error);
+  }
+
+  function stopPlayback() {
+    if (sourceRef.current) {
+      try { sourceRef.current.stop(); } catch (e) { /* ignore */ }
+      sourceRef.current.disconnect();
+      sourceRef.current = null;
+    }
+    setPlaying(false);
+  }
+
+  function exportMusicXML() {
+    if (notes.length === 0) return;
+    const divisions = 480;
+    const tempo = 120;
+    const header = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.1 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">\n<score-partwise version="3.1">\n  <part-list>\n    <score-part id=\"P1\">\n      <part-name>Music</part-name>\n    </score-part>\n  </part-list>\n  <part id=\"P1\">\n    <measure number=\"1\">\n      <attributes>\n        <divisions>${divisions}</divisions>\n        <key>\n          <fifths>0</fifths>\n        </key>\n        <time>\n          <beats>4</beats>\n          <beat-type>4</beat-type>\n        </time>\n        <clef>\n          <sign>G</sign>\n          <line>2</line>\n        </clef>\n      </attributes>\n`;
+
+    let body = '';
+    for (let i = 0; i < notes.length; i += 1) {
+      const cur = notes[i];
+      const next = notes[i + 1];
+      const dur = next ? Math.max(0.125, next.time - cur.time) : 0.5;
+      // map duration to quarter lengths
+      const quarters = Math.round(dur * (tempo / 60));
+      const durationDivs = Math.max(1, Math.round(quarters * divisions));
+      if (!cur.frequency) {
+        body += `      <note>\n        <rest/>\n        <duration>${durationDivs}</duration>\n      </note>\n`;
+      } else {
+        const match = cur.note.match(/([A-G]#?)(-?\d+)/);
+        const step = match ? match[1].replace('#', '') : 'C';
+        const octave = match ? match[2] : '4';
+        const alter = match && match[1].includes('#') ? 1 : 0;
+        body += `      <note>\n        <pitch>\n          <step>${step}</step>\n          ${alter ? '<alter>1</alter>' : ''}\n          <octave>${octave}</octave>\n        </pitch>\n        <duration>${durationDivs}</duration>\n      </note>\n`;
+      }
+    }
+
+    const footer = '    </measure>\n  </part>\n</score-partwise>';
+    const xml = header + body + footer;
+    setXmlPreview(xml);
+    const blob = new Blob([xml], { type: 'application/xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'transcription.musicxml';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <section className="transcription-lab">
+      <div className="transcription-grid">
+        <article className="transcription-main panel panel--filled">
+          <div className="section-heading">
+            <p className="eyebrow">Transcription Lab</p>
+            <h4>Upload a monophonic clip to extract onsets and notes</h4>
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <input ref={fileRef} type="file" accept="audio/*" onChange={handleFile} />
+            <select onChange={(e) => loadSampleByValue(e.target.value)} defaultValue="" style={{ marginLeft: 8 }}>
+              <option value="">Select sample</option>
+              {sampleTracks.map((t) => (
+                <option key={t.url} value={t.url}>{t.label}</option>
+              ))}
+            </select>
+            <div style={{ marginTop: 10 }}>
+              <button className="button button--primary" type="button" onClick={playBuffer} disabled={loading || playing}>Play</button>
+              <button className="button button--ghost" type="button" onClick={stopPlayback} disabled={!playing}>Stop</button>
+              <button className="button button--ghost" type="button" onClick={exportMusicXML} disabled={notes.length === 0}>Export MusicXML</button>
+              <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <label style={{ color: 'var(--muted)' }}>Tempo</label>
+                <input type="number" value={tempo} onChange={(e) => setTempo(Number(e.target.value))} style={{ width: 84 }} />
+                <label style={{ color: 'var(--muted)' }}>Resolution</label>
+                <select value={resolution} onChange={(e) => setResolution(Number(e.target.value))}>
+                  <option value={4}>Quarter</option>
+                  <option value={8}>Eighth</option>
+                  <option value={16}>16th</option>
+                  <option value={32}>32nd</option>
+                </select>
+                <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input type="checkbox" checked={triplet} onChange={(e) => setTriplet(e.target.checked)} /> Triplet
+                </label>
+                <label style={{ color: 'var(--muted)' }}>Swing</label>
+                <input type="range" min="0" max="0.5" step="0.01" value={swing} onChange={(e) => setSwing(Number(e.target.value))} />
+                <strong>{Math.round(swing * 100)}%</strong>
+                <button className="button button--primary" type="button" onClick={playQuantized} disabled={notes.length === 0}>Play quantized</button>
+                <button className="button button--ghost" type="button" onClick={exportQuantizedMusicXML} disabled={notes.length === 0}>Export quantized XML</button>
+                <button className="button button--ghost" type="button" onClick={exportQuantizedMIDI} disabled={notes.length === 0}>Export MIDI</button>
+              </div>
+            </div>
+          </div>
+
+          <canvas ref={canvasRef} className="wave-canvas" style={{ marginTop: 16, width: '100%' }} />
+
+          <div style={{ marginTop: 12 }}>
+            <p className="eyebrow">Detected events</p>
+            <div className="detected-list">
+              {notes.length === 0 ? <p className="practice-note">No events detected yet. Upload a short monophonic clip.</p> : null}
+              <canvas ref={pianoRef} className="wave-canvas" style={{ width: '100%', marginTop: 8 }} />
+              {notes.map((n, i) => (
+                <div key={`${n.time}-${i}`} className="detected-item">
+                  <strong>{n.note}</strong>
+                  <span>{n.frequency ? `${n.frequency.toFixed(1)} Hz` : '—'}</span>
+                  <span>{n.time.toFixed(2)}s</span>
+                </div>
+              ))}
+              {xmlPreview ? (
+                <div style={{ marginTop: 12 }}>
+                  <p className="eyebrow">MusicXML preview</p>
+                  <textarea readOnly value={xmlPreview} style={{ width: '100%', height: 160 }} />
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </article>
+
+        <aside className="transcription-side">
+          <article className="panel">
+            <div className="section-heading">
+              <p className="eyebrow">Notes</p>
+              <h4>Quick tips</h4>
+            </div>
+            <p className="practice-note">For best results use a clean monophonic recording (voice, whistle, or single instrument). Polyphonic audio will produce noisy or missing notes.</p>
+            <p className="practice-note">This demo runs entirely in the browser; export produces a simple MusicXML file for quick inspection.</p>
+          </article>
+        </aside>
+      </div>
+    </section>
+  );
+}

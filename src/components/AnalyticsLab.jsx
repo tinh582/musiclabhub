@@ -1,0 +1,293 @@
+import { useMemo, useRef, useState } from 'react';
+import { CATALOG } from '../data/catalog';
+
+function groupByGenre(catalog) {
+  const map = {};
+  catalog.forEach((t) => {
+    if (!t.genre) return;
+    if (!map[t.genre]) map[t.genre] = [];
+    map[t.genre].push(t);
+  });
+  return map;
+}
+
+function avg(arr, key) {
+  if (!arr || arr.length === 0) return 0;
+  return arr.reduce((s, x) => s + Number(x[key] || 0), 0) / arr.length;
+}
+
+function parseCSV(text) {
+  // very small CSV parser: header row, comma-separated, no quoting handling beyond basic
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(',').map((h) => h.trim());
+  return lines.slice(1).map((ln) => {
+    const cols = ln.split(',').map((c) => c.trim());
+    const obj = {};
+    headers.forEach((h, i) => {
+      let v = cols[i] ?? '';
+      // try convert numbers
+      if (h.match(/tempo|energy|valence|danceability|popularity/i)) {
+        v = parseFloat(v) || 0;
+      }
+      obj[h] = v;
+    });
+    return obj;
+  });
+}
+
+export function AnalyticsLab() {
+  const [dataset, setDataset] = useState(CATALOG.slice());
+  const [selectedGenres, setSelectedGenres] = useState(null);
+  const [tempoRange, setTempoRange] = useState([40, 200]);
+
+  const tempoRef = useRef(null);
+  const scatterRef = useRef(null);
+
+  const allGenres = useMemo(() => Array.from(new Set(dataset.map((d) => d.genre).filter(Boolean))).sort(), [dataset]);
+
+  const colorMap = useMemo(() => {
+    const map = {};
+    const n = allGenres.length || 1;
+    allGenres.forEach((g, i) => {
+      const h = Math.round((i * 360) / n);
+      map[g] = `hsl(${h}deg 80% 60%)`;
+    });
+    return map;
+  }, [allGenres]);
+
+  const filtered = useMemo(() => {
+    return dataset.filter((d) => {
+      const t = Number(d.tempo || 0);
+      if (t < tempoRange[0] || t > tempoRange[1]) return false;
+      if (selectedGenres && selectedGenres.length) return selectedGenres.includes(d.genre);
+      return true;
+    });
+  }, [dataset, selectedGenres, tempoRange]);
+
+  const byGenre = useMemo(() => groupByGenre(filtered), [filtered]);
+
+  const genreStats = useMemo(() => {
+    return Object.keys(byGenre).map((g) => ({
+      genre: g,
+      energy: avg(byGenre[g], 'energy'),
+      valence: avg(byGenre[g], 'valence'),
+      danceability: avg(byGenre[g], 'danceability'),
+      tempo: avg(byGenre[g], 'tempo'),
+      count: byGenre[g].length,
+    }));
+  }, [byGenre]);
+
+  const tempoBins = useMemo(() => {
+    const tempos = filtered.map((c) => Number(c.tempo || 0)).filter(Boolean);
+    if (!tempos.length) return [];
+    const min = Math.min(...tempos);
+    const max = Math.max(...tempos);
+    const bins = 8;
+    const size = (max - min) / bins || 1;
+    const counts = new Array(bins).fill(0);
+    tempos.forEach((t) => {
+      let idx = Math.floor((t - min) / size);
+      if (idx >= bins) idx = bins - 1;
+      counts[idx] += 1;
+    });
+    const ranges = counts.map((c, i) => ({ label: `${Math.round(min + i * size)}-${Math.round(min + (i + 1) * size)}`, count: c }));
+    return ranges;
+  }, [filtered]);
+
+  const scatterPoints = useMemo(() => filtered.map((t) => ({ x: Number(t.energy || 0), y: Number(t.valence || 0), genre: t.genre, title: `${t.title || ''} — ${t.artist || ''}` })), [filtered]);
+
+  function handleFile(e) {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = parseCSV(String(ev.target.result || ''));
+        if (parsed.length) setDataset(parsed);
+      } catch (err) {
+        // ignore
+      }
+    };
+    reader.readAsText(f);
+  }
+
+  function toggleGenre(g) {
+    if (!selectedGenres) setSelectedGenres([g]);
+    else {
+      if (selectedGenres.includes(g)) setSelectedGenres(selectedGenres.filter((x) => x !== g));
+      else setSelectedGenres([...selectedGenres, g]);
+    }
+  }
+
+  function downloadSVG(svgEl, name) {
+    if (!svgEl) return;
+    const serializer = new XMLSerializer();
+    const source = serializer.serializeToString(svgEl);
+    const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function downloadPNG(svgEl, name) {
+    if (!svgEl) return;
+    const serializer = new XMLSerializer();
+    const source = serializer.serializeToString(svgEl);
+    const svgBlob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width || 1200;
+      canvas.height = img.height || 800;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg') || '#0b0b0b';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const png = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = png;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  }
+
+  return (
+    <section className="analytics-lab">
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <p className="eyebrow">Music Analytics</p>
+          <h4>Upload datasets, filter and export visuals</h4>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input type="file" accept=".csv,text/csv" onChange={handleFile} />
+          <button className="btn" onClick={() => { if (tempoRef.current) downloadSVG(tempoRef.current, 'tempo.svg'); }}>Export Tempo SVG</button>
+          <button className="btn" onClick={() => { if (tempoRef.current) downloadPNG(tempoRef.current, 'tempo.png'); }}>Export Tempo PNG</button>
+        </div>
+      </div>
+
+      <div className="analytics-grid" style={{ marginTop: 14 }}>
+        <article className="panel panel--filled">
+          <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <div style={{ flex: 1 }}>
+                  <p className="eyebrow">Tempo range</p>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input type="range" min={20} max={240} value={tempoRange[0]} onChange={(e) => setTempoRange([Number(e.target.value), tempoRange[1]])} />
+                    <input type="range" min={20} max={240} value={tempoRange[1]} onChange={(e) => setTempoRange([tempoRange[0], Number(e.target.value)])} />
+                    <div style={{ minWidth: 80, textAlign: 'right' }}>{tempoRange[0]}-{tempoRange[1]} BPM</div>
+                  </div>
+                </div>
+
+                <div style={{ width: 220 }}>
+                  <p className="eyebrow">Genres</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {allGenres.map((g) => (
+                      <button key={g} className={`chip ${selectedGenres && selectedGenres.includes(g) ? 'chip--active' : ''}`} onClick={() => toggleGenre(g)} style={{ borderColor: colorMap[g] }}>
+                        <span style={{ display: 'inline-block', width: 10, height: 10, background: colorMap[g], borderRadius: 3, marginRight: 6 }} />{g}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 12 }}>
+                <p className="eyebrow">Tempo distribution</p>
+                <svg ref={tempoRef} id="tempoSvg" viewBox="0 0 720 180" style={{ width: '100%', marginTop: 8 }}>
+                  {tempoBins.map((b, i) => {
+                    const w = 720 / tempoBins.length;
+                    const maxCount = Math.max(...tempoBins.map((bb) => bb.count)) || 1;
+                    const h = (b.count / maxCount) * 120;
+                    return (
+                      <g key={b.label} transform={`translate(${i * w}, ${140 - h})`}>
+                        <rect x={8} y={0} width={w - 16} height={h} fill="rgba(134,183,255,0.95)" rx={6} />
+                        <text x={w / 2} y={h + 16} fill="var(--muted)" fontSize={12} textAnchor="middle">{b.label}</text>
+                      </g>
+                    );
+                  })}
+                </svg>
+
+                <div style={{ marginTop: 18 }}>
+                  <p className="eyebrow">Energy vs Valence</p>
+                  <svg ref={scatterRef} id="scatterSvg" viewBox="0 0 720 320" style={{ width: '100%', marginTop: 8 }}>
+                    <rect x="0" y="0" width="720" height="320" fill="rgba(255,255,255,0.02)" rx="12" />
+                    {scatterPoints.map((p, i) => {
+                      const x = 40 + p.x * 640;
+                      const y = 260 - p.y * 180;
+                      const c = colorMap[p.genre] || 'rgba(255,255,255,0.6)';
+                      return (
+                        <g key={`${p.title}-${i}`} transform={`translate(${x}, ${y})`}>
+                          <circle r={7} fill={c} stroke="#000" strokeOpacity={0.08} />
+                          <title>{p.title}</title>
+                        </g>
+                      );
+                    })}
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <aside className="panel">
+          <div className="section-heading">
+            <p className="eyebrow">By genre</p>
+            <h4>Average features</h4>
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <strong>Legend</strong>
+                {allGenres.map((g) => (
+                  <div key={g} style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 120 }}>
+                    <div style={{ width: 12, height: 12, background: colorMap[g], borderRadius: 3 }} />
+                    <div style={{ fontSize: 13 }}>{g}</div>
+                  </div>
+                ))}
+              </div>
+
+              {genreStats.map((g) => (
+                <div key={g.genre} style={{ marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <div style={{ width: 10, height: 10, background: colorMap[g.genre], borderRadius: 2 }} />
+                      <strong>{g.genre}</strong>
+                    </div>
+                    <div style={{ color: 'var(--muted)' }}>{g.count}</div>
+                  </div>
+
+                  <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <div style={{ width: 76 }}>{'Energy'}</div>
+                      <div style={{ flex: 1, height: 8, background: 'rgba(255,255,255,0.03)', borderRadius: 999 }}>
+                        <div style={{ width: `${Math.round(g.energy * 100)}%`, height: '100%', background: 'linear-gradient(90deg,var(--teal),var(--blue))' }} />
+                      </div>
+                      <div style={{ width: 36, textAlign: 'right' }}>{Math.round(g.energy * 100)}%</div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <div style={{ width: 76 }}>{'Valence'}</div>
+                      <div style={{ flex: 1, height: 8, background: 'rgba(255,255,255,0.03)', borderRadius: 999 }}>
+                        <div style={{ width: `${Math.round(g.valence * 100)}%`, height: '100%', background: 'linear-gradient(90deg,var(--gold),var(--coral))' }} />
+                      </div>
+                      <div style={{ width: 36, textAlign: 'right' }}>{Math.round(g.valence * 100)}%</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+  );
+}
