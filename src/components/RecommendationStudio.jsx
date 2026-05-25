@@ -114,6 +114,7 @@ export function RecommendationStudio() {
   const [spotifyLoading, setSpotifyLoading] = useState(true);
   const [spotifyError, setSpotifyError] = useState('');
   const [spotifyToken, setSpotifyToken] = useState(getSpotifyToken());
+  const [spotifyMeta, setSpotifyMeta] = useState(null);
 
   useEffect(() => {
     if (!currentUser) {
@@ -181,11 +182,13 @@ export function RecommendationStudio() {
         }
         if (!cancelled) {
           setSpotifyTracks(data.tracks || []);
+          setSpotifyMeta(data.meta || null);
         }
       } catch (error) {
         if (!cancelled) {
           setSpotifyError(error.message || 'Unable to load Spotify recommendations.');
           setSpotifyTracks([]);
+          setSpotifyMeta(null);
         }
       } finally {
         if (!cancelled) {
@@ -423,7 +426,9 @@ export function RecommendationStudio() {
               <h4>Audio features</h4>
             </div>
             <p className="muted">
-              {spotifyToken ? 'Spotify connected. Audio features enabled.' : 'Connect Spotify to unlock full audio features.'}
+              {spotifyToken
+                ? (spotifyMeta?.audioFeatures ? 'Spotify connected. Audio features enabled.' : 'Spotify connected, but audio features unavailable.')
+                : 'Connect Spotify to unlock full audio features.'}
             </p>
             <div className="auth-actions">
               {spotifyToken ? (
@@ -445,6 +450,11 @@ export function RecommendationStudio() {
               <span style={{ color: 'var(--muted)' }}>Album: {activeTrack ? activeTrack.album : 'n/a'}</span>
               <span style={{ color: 'var(--muted)' }}>Popularity: {activeTrack ? activeTrack.popularity : 'n/a'}</span>
               <span style={{ color: 'var(--muted)' }}>Preview: {activeTrack?.previewUrl ? 'Available' : 'Not available'}</span>
+              {activeTrack?.spotifyUrl ? (
+                <span style={{ color: 'var(--muted)' }}>
+                  <a href={activeTrack.spotifyUrl} target="_blank" rel="noreferrer">Open in Spotify</a>
+                </span>
+              ) : null}
               <span style={{ color: 'var(--muted)' }}>Energy: {activeTrack ? formatPercent(activeTrack.energy) : 'n/a'}</span>
               <span style={{ color: 'var(--muted)' }}>Valence: {activeTrack ? formatPercent(activeTrack.valence) : 'n/a'}</span>
               <span style={{ color: 'var(--muted)' }}>Danceability: {activeTrack ? formatPercent(activeTrack.danceability) : 'n/a'}</span>
@@ -479,9 +489,15 @@ export function RecommendationStudio() {
                   </div>
                   <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
                     <div className="recommendation-score">{Math.round(track.score * 100)}</div>
-                    <button type="button" className={`mini-button${playingId === track.id ? ' active' : ''}`} onClick={() => playTrack(track)}>
-                      {playingId === track.id ? 'Stop' : (track.previewUrl ? 'Play' : 'No preview')}
-                    </button>
+                    {track.previewUrl ? (
+                      <button type="button" className={`mini-button${playingId === track.id ? ' active' : ''}`} onClick={() => playTrack(track)}>
+                        {playingId === track.id ? 'Stop' : 'Play'}
+                      </button>
+                    ) : track.spotifyUrl ? (
+                      <a className="mini-button" href={track.spotifyUrl} target="_blank" rel="noreferrer">Open</a>
+                    ) : (
+                      <span className="muted">No preview</span>
+                    )}
                   </div>
                 </div>
               ))}

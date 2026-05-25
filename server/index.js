@@ -181,6 +181,8 @@ app.get('/api/spotify/recommendations', async (req, res) => {
       }
     }
 
+    const featuresEnabled = userToken && featureMap.size > 0;
+
     const tracks = tracksFromSearch.map((track) => {
       const features = featureMap.get(track.id);
       return {
@@ -189,6 +191,7 @@ app.get('/api/spotify/recommendations', async (req, res) => {
         artist: track.artists.map((artist) => artist.name).join(', '),
         album: track.album?.name || 'Spotify',
         previewUrl: track.preview_url,
+        spotifyUrl: track.external_urls?.spotify,
         popularity: track.popularity ?? 50,
         energy: features?.energy ?? energy,
         valence: features?.valence ?? mood,
@@ -199,7 +202,13 @@ app.get('/api/spotify/recommendations', async (req, res) => {
       };
     });
 
-    res.json({ tracks });
+    res.json({
+      meta: {
+        source: userToken ? 'user' : 'app',
+        audioFeatures: featuresEnabled,
+      },
+      tracks,
+    });
   } catch (error) {
     res.status(500).json({ error: error.message || 'Server error.' });
   }
