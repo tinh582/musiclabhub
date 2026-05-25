@@ -16,7 +16,7 @@ const app = express();
 const port = Number(process.env.PORT || 5174);
 const clientOrigin = process.env.CLIENT_ORIGIN || 'https://localhost:5173';
 const redirectUri = process.env.SPOTIFY_REDIRECT_URI || 'https://localhost:5173/callback';
-const authScopes = process.env.SPOTIFY_SCOPES || 'user-read-email';
+const authScopes = process.env.SPOTIFY_SCOPES || 'user-read-email user-top-read';
 const useHttps = process.env.USE_HTTPS === 'true';
 
 app.use(cors({
@@ -142,17 +142,59 @@ app.get('/api/spotify/exchange', async (req, res) => {
   }
 });
 
+app.get('/api/spotify/seeds', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const userToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (!userToken) {
+      res.json({ artists: [], genres: [] });
+      return;
+    }
+
+    const topArtists = await fetchJson(
+      'https://api.spotify.com/v1/me/top/artists?limit=12&time_range=medium_term',
+      userToken,
+    );
+
+    const artists = (topArtists.items || []).map((artist) => ({
+      id: artist.id,
+      name: artist.name,
+      genres: artist.genres || [],
+    }));
+
+    const genreCount = new Map();
+    artists.forEach((artist) => {
+      (artist.genres || []).forEach((genre) => {
+        genreCount.set(genre, (genreCount.get(genre) || 0) + 1);
+      });
+    });
+
+    const genres = [...genreCount.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([genre]) => genre);
+
+    res.json({
+      artists: artists.map((artist) => ({ id: artist.id, name: artist.name })),
+      genres,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Server error.' });
+  }
+});
+
 app.get('/api/spotify/recommendations', async (req, res) => {
   try {
     const authHeader = req.headers.authorization || '';
     const userToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
     const token = userToken || await getAccessToken();
     const seedGenre = req.query.seedGenre || 'pop';
+    const seedArtistName = req.query.seedArtistName || '';
     const energy = Number(req.query.energy || 0.7);
     const mood = Number(req.query.mood || 0.6);
     const tempo = Number(req.query.tempo || 120);
     const params = new URLSearchParams({
-      q: seedGenre,
+      q: seedArtistName ? `artist:"${seedArtistName}"` : seedGenre,
       type: 'track',
     });
 

@@ -18,6 +18,7 @@ function scoreTrack(track, profile, mode) {
   const tempoMatch = 1 - Math.min(Math.abs(track.tempo - profile.tempo) / 120, 1);
   const collaborative = track.collaborative;
   const popularity = track.popularity / 100;
+  const freshness = 1 - popularity;
 
   if (mode === 'content') {
     return energyMatch * 0.34 + valenceMatch * 0.3 + danceMatch * 0.2 + tempoMatch * 0.16;
@@ -25,6 +26,22 @@ function scoreTrack(track, profile, mode) {
 
   if (mode === 'collab') {
     return collaborative * 0.55 + popularity * 0.25 + energyMatch * 0.12 + valenceMatch * 0.08;
+  }
+
+  if (mode === 'mood') {
+    return valenceMatch * 0.45 + energyMatch * 0.25 + danceMatch * 0.2 + tempoMatch * 0.1;
+  }
+
+  if (mode === 'energy') {
+    return energyMatch * 0.5 + tempoMatch * 0.3 + danceMatch * 0.15 + valenceMatch * 0.05;
+  }
+
+  if (mode === 'discovery') {
+    return freshness * 0.4 + danceMatch * 0.2 + energyMatch * 0.2 + valenceMatch * 0.2;
+  }
+
+  if (mode === 'safe') {
+    return popularity * 0.5 + energyMatch * 0.2 + valenceMatch * 0.2 + danceMatch * 0.1;
   }
 
   return energyMatch * 0.24 + valenceMatch * 0.24 + danceMatch * 0.16 + tempoMatch * 0.14 + collaborative * 0.16 + popularity * 0.06;
@@ -39,6 +56,14 @@ function buildReason(track, profile, mode) {
 
   if (mode === 'collab') {
     reasons.push('similar listener behavior');
+  } else if (mode === 'mood') {
+    reasons.push('mood-first ranking');
+  } else if (mode === 'energy') {
+    reasons.push('energy-first ranking');
+  } else if (mode === 'discovery') {
+    reasons.push('freshness boosted');
+  } else if (mode === 'safe') {
+    reasons.push('popular-safe picks');
   } else if (mode === 'content') {
     reasons.push('content similarity');
   } else {
@@ -83,6 +108,7 @@ const DEFAULTS = {
   mood: 0.7,
   energy: 0.8,
   mode: 'hybrid',
+  resultCount: 10,
   likedIds: [],
   blockedIds: [],
 };
@@ -105,6 +131,7 @@ export function RecommendationStudio() {
   const [mood, setMood] = useState(DEFAULTS.mood);
   const [energy, setEnergy] = useState(DEFAULTS.energy);
   const [mode, setMode] = useState(DEFAULTS.mode);
+  const [resultCount, setResultCount] = useState(DEFAULTS.resultCount);
   const [likedIds, setLikedIds] = useState(DEFAULTS.likedIds);
   const [blockedIds, setBlockedIds] = useState(DEFAULTS.blockedIds);
   const [hasLoadedState, setHasLoadedState] = useState(false);
@@ -115,6 +142,8 @@ export function RecommendationStudio() {
   const [spotifyError, setSpotifyError] = useState('');
   const [spotifyToken, setSpotifyToken] = useState(getSpotifyToken());
   const [spotifyMeta, setSpotifyMeta] = useState(null);
+  const [seedOptions, setSeedOptions] = useState(SPOTIFY_SEEDS);
+  const [seedSource, setSeedSource] = useState('genre');
 
   useEffect(() => {
     if (!currentUser) {
@@ -138,6 +167,7 @@ export function RecommendationStudio() {
       setMood(userState.mood ?? DEFAULTS.mood);
       setEnergy(userState.energy ?? DEFAULTS.energy);
       setMode(userState.mode ?? DEFAULTS.mode);
+      setResultCount(userState.resultCount ?? DEFAULTS.resultCount);
       setLikedIds(Array.isArray(userState.likedIds) ? userState.likedIds : DEFAULTS.likedIds);
       setBlockedIds(Array.isArray(userState.blockedIds) ? userState.blockedIds : DEFAULTS.blockedIds);
     } else {
@@ -145,6 +175,7 @@ export function RecommendationStudio() {
       setMood(DEFAULTS.mood);
       setEnergy(DEFAULTS.energy);
       setMode(DEFAULTS.mode);
+      setResultCount(DEFAULTS.resultCount);
       setLikedIds(DEFAULTS.likedIds);
       setBlockedIds(DEFAULTS.blockedIds);
     }
@@ -159,12 +190,80 @@ export function RecommendationStudio() {
 
   useEffect(() => {
     let cancelled = false;
+
+    async function loadSeeds() {
+      if (!spotifyToken) {
+        setSeedOptions(SPOTIFY_SEEDS);
+        setSeedSource('genre');
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}/api/spotify/seeds`, {
+          headers: { Authorization: `Bearer ${spotifyToken}` },
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'Unable to load Spotify seeds.');
+        }
+
+        if (cancelled) return;
+
+        const artistSeeds = (data.artists || []).map((artist) => ({
+          label: artist.name,
+          seedArtistName: artist.name,
+          energy: 0.65,
+          valence: 0.55,
+          danceability: 0.62,
+          tempo: 110,
+          type: 'artist',
+        }));
+
+        const genreSeeds = (data.genres || []).map((genre) => ({
+          label: genre,
+          seedGenre: genre,
+          energy: 0.65,
+          valence: 0.55,
+          danceability: 0.62,
+          tempo: 110,
+          type: 'genre',
+        }));
+
+        if (artistSeeds.length) {
+          setSeedOptions(artistSeeds);
+          setSeedSource('artist');
+          setSeedIndex(0);
+        } else if (genreSeeds.length) {
+          setSeedOptions(genreSeeds);
+          setSeedSource('genre');
+          setSeedIndex(0);
+        } else {
+          setSeedOptions(SPOTIFY_SEEDS);
+          setSeedSource('genre');
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setSeedOptions(SPOTIFY_SEEDS);
+          setSeedSource('genre');
+        }
+      }
+    }
+
+    loadSeeds();
+    return () => {
+      cancelled = true;
+    };
+  }, [spotifyToken]);
+
+  useEffect(() => {
+    let cancelled = false;
     async function loadSpotifyTracks() {
       setSpotifyLoading(true);
       setSpotifyError('');
       const seed = SPOTIFY_SEEDS[seedIndex] || SPOTIFY_SEEDS[0];
       const params = new URLSearchParams({
-        seedGenre: seed.seedGenre,
+          seedGenre: seed.seedGenre || '',
+          seedArtistName: seed.seedArtistName || '',
         energy: energy.toString(),
         mood: mood.toString(),
         tempo: (seed.tempo + Math.round((energy - 0.5) * 28)).toString(),
@@ -211,6 +310,7 @@ export function RecommendationStudio() {
       mood,
       energy,
       mode,
+      resultCount,
       likedIds,
       blockedIds,
     };
@@ -218,7 +318,7 @@ export function RecommendationStudio() {
   }, [blockedIds, currentUser, energy, hasLoadedState, likedIds, mode, mood, seedIndex]);
 
   const profile = useMemo(() => {
-    const seed = SPOTIFY_SEEDS[seedIndex];
+    const seed = seedOptions[seedIndex] || SPOTIFY_SEEDS[0];
     return {
       energy: clamp((seed.energy * 0.5) + (energy * 0.5), 0, 1),
       valence: clamp((seed.valence * 0.5) + (mood * 0.5), 0, 1),
@@ -240,8 +340,8 @@ export function RecommendationStudio() {
         };
       })
       .sort((a, b) => b.score - a.score)
-      .slice(0, 5);
-  }, [blockedIds, likedIds, mode, profile, spotifyTracks]);
+        .slice(0, resultCount);
+      }, [blockedIds, likedIds, mode, profile, resultCount, spotifyTracks]);
 
   const activeTrack = playingId
     ? spotifyTracks.find((t) => t.id === playingId)
@@ -267,6 +367,7 @@ export function RecommendationStudio() {
     setMood(DEFAULTS.mood);
     setEnergy(DEFAULTS.energy);
     setMode(DEFAULTS.mode);
+    setResultCount(DEFAULTS.resultCount);
     setLikedIds(DEFAULTS.likedIds);
     setBlockedIds(DEFAULTS.blockedIds);
   };
@@ -337,7 +438,7 @@ export function RecommendationStudio() {
             <div className="control-card">
               <p className="eyebrow">Seed track</p>
               <div className="seed-grid">
-                {SPOTIFY_SEEDS.map((seed, index) => (
+                {seedOptions.map((seed, index) => (
                   <button
                     key={seed.label}
                     type="button"
@@ -348,12 +449,17 @@ export function RecommendationStudio() {
                   </button>
                 ))}
               </div>
+              <p className="muted" style={{ marginTop: 10 }}>
+                {seedSource === 'artist'
+                  ? 'Seeded from your top Spotify artists.'
+                  : 'Seeded from Spotify genres.'}
+              </p>
             </div>
 
             <div className="control-card">
               <p className="eyebrow">Recommendation mode</p>
               <div className="seed-grid">
-                {['hybrid', 'content', 'collab'].map((item) => (
+                {['hybrid', 'content', 'collab', 'mood', 'energy', 'discovery', 'safe'].map((item) => (
                   <button
                     key={item}
                     type="button"
@@ -361,6 +467,22 @@ export function RecommendationStudio() {
                     onClick={() => setMode(item)}
                   >
                     {item}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="control-card">
+              <p className="eyebrow">Results count</p>
+              <div className="seed-grid">
+                {[5, 10, 15, 20].map((count) => (
+                  <button
+                    key={count}
+                    type="button"
+                    className={`target-chip${resultCount === count ? ' active' : ''}`}
+                    onClick={() => setResultCount(count)}
+                  >
+                    {count}
                   </button>
                 ))}
               </div>
@@ -465,7 +587,7 @@ export function RecommendationStudio() {
           <article className="panel panel--filled">
             <div className="section-heading">
               <p className="eyebrow">Recommended playlist</p>
-              <h4>Top 5 tracks</h4>
+              <h4>Top {rankedTracks.length} tracks</h4>
             </div>
             <div className="recommendation-list">
               {spotifyLoading ? (
