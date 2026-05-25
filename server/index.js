@@ -17,6 +17,7 @@ const port = Number(process.env.PORT || 5174);
 const clientOrigin = process.env.CLIENT_ORIGIN || 'https://localhost:5173';
 const redirectUri = process.env.SPOTIFY_REDIRECT_URI || 'https://localhost:5173/callback';
 const authScopes = process.env.SPOTIFY_SCOPES || 'user-read-email';
+const useHttps = process.env.USE_HTTPS === 'true';
 
 app.use(cors({
   origin: clientOrigin,
@@ -212,12 +213,18 @@ function resolveCertPath(value, fallback) {
 const keyPath = resolveCertPath(process.env.SSL_KEY_PATH, 'localhost+2-key.pem');
 const certPath = resolveCertPath(process.env.SSL_CERT_PATH, 'localhost+2.pem');
 
-https.createServer(
-  {
-    key: fs.readFileSync(keyPath),
-    cert: fs.readFileSync(certPath),
-  },
-  app,
-).listen(port, () => {
-  console.log(`Spotify backend running at https://localhost:${port}`);
-});
+if (useHttps) {
+  https.createServer(
+    {
+      key: fs.readFileSync(keyPath),
+      cert: fs.readFileSync(certPath),
+    },
+    app,
+  ).listen(port, () => {
+    console.log(`Spotify backend running at https://localhost:${port}`);
+  });
+} else {
+  app.listen(port, () => {
+    console.log(`Spotify backend running at http://localhost:${port}`);
+  });
+}
