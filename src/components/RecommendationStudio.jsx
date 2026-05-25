@@ -445,6 +445,9 @@ export function RecommendationStudio() {
               <span style={{ color: 'var(--muted)' }}>Album: {activeTrack ? activeTrack.album : 'n/a'}</span>
               <span style={{ color: 'var(--muted)' }}>Popularity: {activeTrack ? activeTrack.popularity : 'n/a'}</span>
               <span style={{ color: 'var(--muted)' }}>Preview: {activeTrack?.previewUrl ? 'Available' : 'Not available'}</span>
+              <span style={{ color: 'var(--muted)' }}>Energy: {activeTrack ? formatPercent(activeTrack.energy) : 'n/a'}</span>
+              <span style={{ color: 'var(--muted)' }}>Valence: {activeTrack ? formatPercent(activeTrack.valence) : 'n/a'}</span>
+              <span style={{ color: 'var(--muted)' }}>Danceability: {activeTrack ? formatPercent(activeTrack.danceability) : 'n/a'}</span>
               <span style={{ color: 'var(--muted)' }}>Duration: {audioLoading || !audioInfo ? 'Loading...' : formatDuration(audioInfo.duration)}</span>
               <span style={{ color: 'var(--muted)' }}>Tempo: {audioLoading || !audioInfo ? 'Loading...' : (audioInfo.tempo ? `${audioInfo.tempo} BPM` : 'n/a')}</span>
             </div>
@@ -468,6 +471,9 @@ export function RecommendationStudio() {
                     <strong>{track.title}</strong>
                     <p>
                       {track.artist} · {track.album}
+                    </p>
+                    <p>
+                      Energy {formatPercent(track.energy)} · Valence {formatPercent(track.valence)} · Dance {formatPercent(track.danceability)} · {Math.round(track.tempo)} BPM
                     </p>
                     <span>{track.explanation}</span>
                   </div>
