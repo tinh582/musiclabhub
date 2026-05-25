@@ -224,7 +224,7 @@ if (useHttps) {
     console.log(`Spotify backend running at https://localhost:${port}`);
   });
 } else {
-  app.listen(port, () => {
-    console.log(`Spotify backend running at http://localhost:${port}`);
+  app.listen(port, '0.0.0.0', () => {
+    console.log(`Spotify backend running at http://0.0.0.0:${port}`);
   });
 }
