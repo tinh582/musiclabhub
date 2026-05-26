@@ -67,27 +67,45 @@ function sleep(ms) {
 async function fetchJson(url, token, options = {}) {
   const retries = Number(options.retries ?? 2);
   const baseDelayMs = Number(options.baseDelayMs ?? 500);
+  const timeoutMs = Number(options.timeoutMs ?? 0);
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const controller = new AbortController();
+    const timeoutId = timeoutMs > 0
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : null;
 
-    if (response.status === 429 && attempt < retries) {
-      const retryAfter = response.headers.get('retry-after');
-      const waitMs = retryAfter
-        ? Number(retryAfter) * 1000
-        : baseDelayMs * Math.pow(2, attempt);
-      await sleep(waitMs);
-      continue;
+    try {
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      });
+
+      if (response.status === 429 && attempt < retries) {
+        const retryAfter = response.headers.get('retry-after');
+        const waitMs = retryAfter
+          ? Number(retryAfter) * 1000
+          : baseDelayMs * Math.pow(2, attempt);
+        await sleep(waitMs);
+        continue;
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Spotify request failed (${response.status}) for ${url}: ${errorText}`);
+      }
+
+      return response.json();
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        throw new Error(`Spotify request timed out for ${url}.`);
+      }
+      throw error;
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     }
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Spotify request failed (${response.status}) for ${url}: ${errorText}`);
-    }
-
-    return response.json();
   }
 
   throw new Error(`Spotify request failed (429) for ${url}: Too many requests`);
@@ -307,6 +325,7 @@ app.get('/api/spotify/recommendations', async (req, res) => {
         return await fetchJson(
           `https://api.spotify.com/v1/search?${params.toString()}`,
           token,
+          { retries: 1, baseDelayMs: 400, timeoutMs: 12000 },
         );
       } catch (error) {
         if (String(error.message || '').includes('Invalid limit')) {
@@ -314,6 +333,7 @@ app.get('/api/spotify/recommendations', async (req, res) => {
           return fetchJson(
             `https://api.spotify.com/v1/search?${fallbackParams.toString()}`,
             token,
+            { retries: 1, baseDelayMs: 400, timeoutMs: 12000 },
           );
         }
         throw error;
