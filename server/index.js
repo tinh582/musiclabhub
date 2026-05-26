@@ -60,17 +60,37 @@ async function getAccessToken() {
   return cachedToken;
 }
 
-async function fetchJson(url, token) {
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Spotify request failed (${response.status}) for ${url}: ${errorText}`);
+async function fetchJson(url, token, options = {}) {
+  const retries = Number(options.retries ?? 2);
+  const baseDelayMs = Number(options.baseDelayMs ?? 500);
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (response.status === 429 && attempt < retries) {
+      const retryAfter = response.headers.get('retry-after');
+      const waitMs = retryAfter
+        ? Number(retryAfter) * 1000
+        : baseDelayMs * Math.pow(2, attempt);
+      await sleep(waitMs);
+      continue;
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Spotify request failed (${response.status}) for ${url}: ${errorText}`);
+    }
+
+    return response.json();
   }
 
-  return response.json();
+  throw new Error(`Spotify request failed (429) for ${url}: Too many requests`);
 }
 
 app.get('/api/health', (req, res) => {
