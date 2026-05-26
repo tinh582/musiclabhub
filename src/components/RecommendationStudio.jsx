@@ -87,6 +87,34 @@ function buildReason(track, profile, mode) {
   return reasons.slice(0, 3).join(' • ');
 }
 
+function moodLabelFromFeatures(track) {
+  const energy = track.energy ?? 0.5;
+  const valence = track.valence ?? 0.5;
+  if (energy >= 0.7 && valence >= 0.6) return 'Euphoric';
+  if (energy >= 0.7 && valence < 0.6) return 'Intense';
+  if (energy < 0.4 && valence >= 0.6) return 'Warm';
+  if (energy < 0.4 && valence < 0.45) return 'Melancholy';
+  if (valence >= 0.65) return 'Bright';
+  if (valence <= 0.4) return 'Moody';
+  return 'Balanced';
+}
+
+function buildSummary(track, profile) {
+  if (!track) return 'No track selected.';
+  const energyDelta = track.energy - profile.energy;
+  const valenceDelta = track.valence - profile.valence;
+  const danceDelta = track.danceability - profile.danceability;
+  const tempoDelta = track.tempo - profile.tempo;
+
+  const fragments = [];
+  fragments.push(energyDelta >= 0.08 ? 'slightly higher energy' : energyDelta <= -0.08 ? 'more relaxed energy' : 'energy match');
+  fragments.push(valenceDelta >= 0.08 ? 'brighter mood' : valenceDelta <= -0.08 ? 'darker mood' : 'mood match');
+  fragments.push(danceDelta >= 0.08 ? 'more rhythmic' : danceDelta <= -0.08 ? 'less rhythmic' : 'rhythm match');
+  fragments.push(Math.abs(tempoDelta) >= 8 ? `tempo ${tempoDelta > 0 ? 'faster' : 'slower'}` : 'tempo match');
+
+  return `Why it fits: ${fragments.join(' · ')}.`;
+}
+
 const STORAGE_KEYS = {
   saved: 'mlh_saved_recommendations',
   state: 'mlh_recommendation_state',
@@ -733,6 +761,13 @@ export function RecommendationStudio() {
               <span style={{ color: 'var(--muted)' }}>Duration: {audioLoading || !audioInfo ? 'Loading...' : formatDuration(audioInfo.duration)}</span>
               <span style={{ color: 'var(--muted)' }}>Tempo: {audioLoading || !audioInfo ? 'Loading...' : (audioInfo.tempo ? `${audioInfo.tempo} BPM` : 'n/a')}</span>
             </div>
+            <div style={{ marginTop: 12 }} className="panel panel--filled">
+              <div className="section-heading">
+                <p className="eyebrow">AI mood label</p>
+                <h4>{activeTrack ? moodLabelFromFeatures(activeTrack) : 'n/a'}</h4>
+              </div>
+              <p className="muted">{buildSummary(activeTrack, profile)}</p>
+            </div>
           </article>
           <article className="panel panel--filled">
             <div className="section-heading">
@@ -757,6 +792,7 @@ export function RecommendationStudio() {
                     <p>
                       Energy {formatPercent(track.energy)} · Valence {formatPercent(track.valence)} · Dance {formatPercent(track.danceability)} · {Math.round(track.tempo)} BPM
                     </p>
+                    <p className="muted">{moodLabelFromFeatures(track)} · {buildSummary(track, profile)}</p>
                     <span>{track.explanation}</span>
                   </div>
                   <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
