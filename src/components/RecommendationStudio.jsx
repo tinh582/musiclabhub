@@ -90,12 +90,21 @@ function buildReason(track, profile, mode) {
 function moodLabelFromFeatures(track) {
   const energy = track.energy ?? 0.5;
   const valence = track.valence ?? 0.5;
-  if (energy >= 0.7 && valence >= 0.6) return 'Euphoric';
-  if (energy >= 0.7 && valence < 0.6) return 'Intense';
-  if (energy < 0.4 && valence >= 0.6) return 'Warm';
-  if (energy < 0.4 && valence < 0.45) return 'Melancholy';
-  if (valence >= 0.65) return 'Bright';
-  if (valence <= 0.4) return 'Moody';
+  const energyHigh = energy >= 0.68;
+  const energyLow = energy <= 0.38;
+  const valenceHigh = valence >= 0.64;
+  const valenceLow = valence <= 0.36;
+
+  if (energyHigh && valenceHigh) return 'Euphoric';
+  if (energyHigh && valenceLow) return 'Fierce';
+  if (energyHigh) return 'Driven';
+
+  if (energyLow && valenceHigh) return 'Tender';
+  if (energyLow && valenceLow) return 'Melancholy';
+  if (energyLow) return 'Calm';
+
+  if (valenceHigh) return 'Bright';
+  if (valenceLow) return 'Moody';
   return 'Balanced';
 }
 
@@ -161,6 +170,28 @@ const SPOTIFY_SEEDS = [
   { label: 'Indie', seedGenre: 'indie', energy: 0.5, valence: 0.46, danceability: 0.52, tempo: 108 },
   { label: 'Hip Hop', seedGenre: 'hip-hop', energy: 0.68, valence: 0.54, danceability: 0.78, tempo: 95 },
   { label: 'Dance', seedGenre: 'dance', energy: 0.78, valence: 0.6, danceability: 0.82, tempo: 124 },
+  { label: 'Alt Rock', seedGenre: 'alt-rock', energy: 0.62, valence: 0.48, danceability: 0.5, tempo: 116 },
+  { label: 'Rock', seedGenre: 'rock', energy: 0.7, valence: 0.5, danceability: 0.46, tempo: 122 },
+  { label: 'Metal', seedGenre: 'metal', energy: 0.85, valence: 0.4, danceability: 0.38, tempo: 138 },
+  { label: 'Jazz', seedGenre: 'jazz', energy: 0.45, valence: 0.55, danceability: 0.42, tempo: 110 },
+  { label: 'Soul', seedGenre: 'soul', energy: 0.52, valence: 0.6, danceability: 0.62, tempo: 98 },
+  { label: 'Funk', seedGenre: 'funk', energy: 0.7, valence: 0.62, danceability: 0.78, tempo: 110 },
+  { label: 'House', seedGenre: 'house', energy: 0.8, valence: 0.6, danceability: 0.85, tempo: 124 },
+  { label: 'Techno', seedGenre: 'techno', energy: 0.82, valence: 0.48, danceability: 0.78, tempo: 130 },
+  { label: 'Trance', seedGenre: 'trance', energy: 0.78, valence: 0.64, danceability: 0.72, tempo: 134 },
+  { label: 'EDM', seedGenre: 'edm', energy: 0.84, valence: 0.6, danceability: 0.8, tempo: 128 },
+  { label: 'Chill', seedGenre: 'chill', energy: 0.35, valence: 0.52, danceability: 0.5, tempo: 88 },
+  { label: 'Acoustic', seedGenre: 'acoustic', energy: 0.3, valence: 0.55, danceability: 0.38, tempo: 92 },
+  { label: 'Ambient', seedGenre: 'ambient', energy: 0.18, valence: 0.45, danceability: 0.2, tempo: 70 },
+  { label: 'Classical', seedGenre: 'classical', energy: 0.3, valence: 0.45, danceability: 0.12, tempo: 84 },
+  { label: 'Lo-fi', seedGenre: 'lo-fi', energy: 0.28, valence: 0.5, danceability: 0.42, tempo: 80 },
+  { label: 'K-pop', seedGenre: 'k-pop', energy: 0.78, valence: 0.7, danceability: 0.72, tempo: 120 },
+  { label: 'Latin', seedGenre: 'latin', energy: 0.7, valence: 0.64, danceability: 0.82, tempo: 112 },
+  { label: 'Reggae', seedGenre: 'reggae', energy: 0.52, valence: 0.6, danceability: 0.68, tempo: 92 },
+  { label: 'Afrobeat', seedGenre: 'afrobeat', energy: 0.68, valence: 0.6, danceability: 0.8, tempo: 106 },
+  { label: 'Country', seedGenre: 'country', energy: 0.52, valence: 0.58, danceability: 0.46, tempo: 104 },
+  { label: 'Folk', seedGenre: 'folk', energy: 0.38, valence: 0.52, danceability: 0.4, tempo: 96 },
+  { label: 'Gospel', seedGenre: 'gospel', energy: 0.58, valence: 0.7, danceability: 0.5, tempo: 98 },
 ];
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://localhost:5174';
