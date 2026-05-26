@@ -254,10 +254,14 @@ app.get('/api/spotify/recommendations', async (req, res) => {
 
     const searchPromises = offsets.map(async (offset) => {
       const q = queries[offset % queries.length];
+      const batchLimit = Math.min(20, Math.max(0, requestedLimit - offset));
+      if (batchLimit === 0) {
+        return { tracks: { items: [] } };
+      }
       const params = new URLSearchParams({
         q,
         type: 'track',
-        limit: String(Math.min(requestedLimit, 20)),
+        limit: String(batchLimit),
         offset: String(offset),
       });
 
