@@ -258,6 +258,7 @@ app.get('/api/spotify/recommendations', async (req, res) => {
       if (batchLimit === 0) {
         return { tracks: { items: [] } };
       }
+
       const params = new URLSearchParams({
         q,
         type: 'track',
@@ -265,10 +266,21 @@ app.get('/api/spotify/recommendations', async (req, res) => {
         offset: String(offset),
       });
 
-      return fetchJson(
-        `https://api.spotify.com/v1/search?${params.toString()}`,
-        token,
-      );
+      try {
+        return await fetchJson(
+          `https://api.spotify.com/v1/search?${params.toString()}`,
+          token,
+        );
+      } catch (error) {
+        if (String(error.message || '').includes('Invalid limit')) {
+          const fallbackParams = new URLSearchParams({ q, type: 'track' });
+          return fetchJson(
+            `https://api.spotify.com/v1/search?${fallbackParams.toString()}`,
+            token,
+          );
+        }
+        throw error;
+      }
     });
 
     const searchResults = await Promise.all(searchPromises);
