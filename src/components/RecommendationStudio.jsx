@@ -122,7 +122,7 @@ const DEFAULTS = {
   mood: 0.7,
   energy: 0.8,
   mode: 'hybrid',
-  resultCount: 10,
+  resultCount: 15,
   likedIds: [],
   blockedIds: [],
 };
@@ -383,6 +383,7 @@ export function RecommendationStudio() {
         energy: energy.toString(),
         mood: mood.toString(),
         tempo: (seed.tempo + Math.round((energy - 0.5) * 28)).toString(),
+        limit: String(Math.max(resultCount * 3, 30)),
       });
 
       try {
@@ -444,7 +445,7 @@ export function RecommendationStudio() {
   }, [seedIndex, mood, energy]);
 
   const rankedTracks = useMemo(() => {
-    return spotifyTracks.filter((track) => !blockedIds.includes(track.id))
+    const scored = spotifyTracks.filter((track) => !blockedIds.includes(track.id))
       .map((track) => {
         const base = scoreTrack(track, profile, mode, preference);
         const likeBoost = likedIds.includes(track.id) ? 0.08 : 0;
@@ -455,9 +456,21 @@ export function RecommendationStudio() {
           explanation: buildReason(track, profile, mode),
         };
       })
-      .sort((a, b) => b.score - a.score)
-        .slice(0, resultCount);
-      }, [blockedIds, likedIds, mode, preference, profile, resultCount, spotifyTracks]);
+      .sort((a, b) => b.score - a.score);
+
+    const perArtistCount = new Map();
+    const diversified = [];
+    for (const track of scored) {
+      const artistKey = track.artist || 'unknown';
+      const count = perArtistCount.get(artistKey) || 0;
+      if (count >= 2) continue;
+      perArtistCount.set(artistKey, count + 1);
+      diversified.push(track);
+      if (diversified.length >= resultCount) break;
+    }
+
+    return diversified.length ? diversified : scored.slice(0, resultCount);
+  }, [blockedIds, likedIds, mode, preference, profile, resultCount, spotifyTracks]);
 
   const activeTrack = playingId
     ? spotifyTracks.find((t) => t.id === playingId)

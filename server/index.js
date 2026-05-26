@@ -245,18 +245,41 @@ app.get('/api/spotify/recommendations', async (req, res) => {
     const energy = Number(req.query.energy || 0.7);
     const mood = Number(req.query.mood || 0.6);
     const tempo = Number(req.query.tempo || 120);
-    const params = new URLSearchParams({
-      q: seedArtistName ? `artist:"${seedArtistName}"` : seedGenre,
-      type: 'track',
+    const requestedLimit = Math.min(Number(req.query.limit || 30), 50);
+    const offsets = [0, 20, 40].filter((offset) => offset < requestedLimit);
+
+    const queries = seedArtistName
+      ? [`artist:"${seedArtistName}"`, seedArtistName]
+      : [seedGenre, `${seedGenre} new`, `${seedGenre} playlist`];
+
+    const searchPromises = offsets.map(async (offset) => {
+      const q = queries[offset % queries.length];
+      const params = new URLSearchParams({
+        q,
+        type: 'track',
+        limit: String(Math.min(requestedLimit, 20)),
+        offset: String(offset),
+      });
+
+      return fetchJson(
+        `https://api.spotify.com/v1/search?${params.toString()}`,
+        token,
+      );
     });
 
-    const searchResults = await fetchJson(
-      `https://api.spotify.com/v1/search?${params.toString()}`,
-      token,
-    );
+    const searchResults = await Promise.all(searchPromises);
+    const tracksFromSearch = searchResults
+      .flatMap((result) => result.tracks?.items || [])
+      .filter(Boolean);
+    const uniqueTracks = new Map();
+    tracksFromSearch.forEach((track) => {
+      if (track?.id && !uniqueTracks.has(track.id)) {
+        uniqueTracks.set(track.id, track);
+      }
+    });
 
-    const tracksFromSearch = searchResults.tracks?.items || [];
-    const trackIds = tracksFromSearch.map((track) => track.id).filter(Boolean);
+    const dedupedTracks = [...uniqueTracks.values()];
+    const trackIds = dedupedTracks.map((track) => track.id).filter(Boolean);
 
     let featureMap = new Map();
     if (userToken && trackIds.length) {
@@ -277,7 +300,7 @@ app.get('/api/spotify/recommendations', async (req, res) => {
 
     const featuresEnabled = userToken && featureMap.size > 0;
 
-    const tracks = tracksFromSearch.map((track) => {
+    const tracks = dedupedTracks.map((track) => {
       const features = featureMap.get(track.id);
       return {
         id: track.id,
