@@ -219,6 +219,7 @@ export function RecommendationStudio() {
   const [seedSource, setSeedSource] = useState('genre');
   const [preference, setPreference] = useState(null);
   const [preferenceStatus, setPreferenceStatus] = useState('idle');
+  const [similarityId, setSimilarityId] = useState('');
 
   useEffect(() => {
     if (!currentUser) {
@@ -435,10 +436,10 @@ export function RecommendationStudio() {
     async function loadSpotifyTracks() {
       setSpotifyLoading(true);
       setSpotifyError('');
-      const seed = SPOTIFY_SEEDS[seedIndex] || SPOTIFY_SEEDS[0];
+      const seed = seedOptions[seedIndex] || SPOTIFY_SEEDS[0];
       const params = new URLSearchParams({
-          seedGenre: seed.seedGenre || '',
-          seedArtistName: seed.seedArtistName || '',
+        seedGenre: seed.seedGenre || '',
+        seedArtistName: seed.seedArtistName || '',
         energy: energy.toString(),
         mood: mood.toString(),
         tempo: (seed.tempo + Math.round((energy - 0.5) * 28)).toString(),
@@ -446,7 +447,8 @@ export function RecommendationStudio() {
       });
 
       try {
-        const response = await fetch(`${API_BASE}/api/spotify/recommendations?${params.toString()}`,
+        const response = await fetch(
+          `${API_BASE}/api/spotify/recommendations?${params.toString()}`,
           spotifyToken
             ? { headers: { Authorization: `Bearer ${spotifyToken}` } }
             : undefined,
@@ -476,7 +478,7 @@ export function RecommendationStudio() {
     return () => {
       cancelled = true;
     };
-  }, [energy, mood, seedIndex, spotifyToken]);
+  }, [energy, mood, seedIndex, spotifyToken, resultCount, seedOptions]);
 
   useEffect(() => {
     if (!currentUser || !hasLoadedState) return;
@@ -491,7 +493,7 @@ export function RecommendationStudio() {
       blockedIds,
     };
     writeJson(STORAGE_KEYS.state, stateByUser);
-  }, [blockedIds, currentUser, energy, hasLoadedState, likedIds, mode, mood, seedIndex]);
+  }, [blockedIds, currentUser, energy, hasLoadedState, likedIds, mode, mood, seedIndex, resultCount]);
 
   const profile = useMemo(() => {
     const seed = seedOptions[seedIndex] || SPOTIFY_SEEDS[0];
@@ -501,10 +503,11 @@ export function RecommendationStudio() {
       danceability: clamp((seed.danceability * 0.6) + (mood * 0.2) + (energy * 0.2), 0, 1),
       tempo: seed.tempo + Math.round((energy - 0.5) * 28),
     };
-  }, [seedIndex, mood, energy]);
+  }, [seedIndex, mood, energy, seedOptions]);
 
   const rankedTracks = useMemo(() => {
-    const scored = spotifyTracks.filter((track) => !blockedIds.includes(track.id))
+    const scored = spotifyTracks
+      .filter((track) => !blockedIds.includes(track.id))
       .map((track) => {
         const base = scoreTrack(track, profile, mode, preference);
         const likeBoost = likedIds.includes(track.id) ? 0.08 : 0;
@@ -532,9 +535,37 @@ export function RecommendationStudio() {
   }, [blockedIds, likedIds, mode, preference, profile, resultCount, spotifyTracks]);
 
   const activeTrack = playingId
-    ? spotifyTracks.find((t) => t.id === playingId)
+    ? spotifyTracks.find((track) => track.id === playingId)
     : rankedTracks[0];
   const { data: audioInfo, loading: audioLoading } = useAudioFeatures(activeTrack?.previewUrl);
+
+  const similarityResults = useMemo(() => {
+    if (!similarityId) return [];
+    const target = spotifyTracks.find((track) => track.id === similarityId);
+    if (!target) return [];
+    const normalizeTempo = (tempo) => Math.min(Math.max(tempo ?? 0, 0), 240) / 240;
+    const targetVector = [
+      target.energy ?? 0.5,
+      target.valence ?? 0.5,
+      target.danceability ?? 0.5,
+      normalizeTempo(target.tempo ?? 120),
+    ];
+
+    return spotifyTracks
+      .filter((track) => track.id !== similarityId)
+      .map((track) => {
+        const vector = [
+          track.energy ?? 0.5,
+          track.valence ?? 0.5,
+          track.danceability ?? 0.5,
+          normalizeTempo(track.tempo ?? 120),
+        ];
+        const distance = Math.sqrt(vector.reduce((sum, value, index) => sum + (value - targetVector[index]) ** 2, 0));
+        return { ...track, distance };
+      })
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, 6);
+  }, [similarityId, spotifyTracks]);
 
   const toggleLike = (id) => {
     setLikedIds((current) =>
@@ -585,7 +616,7 @@ export function RecommendationStudio() {
     const nextSet = {
       id: `${Date.now()}`,
       createdAt: new Date().toISOString(),
-      seed: SPOTIFY_SEEDS[seedIndex]?.label,
+      seed: seedOptions[seedIndex]?.label || SPOTIFY_SEEDS[seedIndex]?.label,
       mood,
       energy,
       mode,
@@ -632,6 +663,28 @@ export function RecommendationStudio() {
   return (
     <section className="recommendation-studio">
       <div className="recommendation-layout">
+        <article className="panel">
+          <div className="section-heading">
+            <p className="eyebrow">Spotify</p>
+            <h4>Audio features</h4>
+          </div>
+          <p className="muted">
+            {spotifyToken
+              ? (spotifyMeta?.audioFeatures ? 'Spotify connected. Audio features enabled.' : 'Spotify connected, but audio features unavailable.')
+              : 'Connect Spotify to unlock full audio features.'}
+          </p>
+          {preferenceStatus === 'loading' ? (
+            <p className="muted">Building your personal model...</p>
+          ) : null}
+          <div className="auth-actions">
+            {spotifyToken ? (
+              <button type="button" className="btn" onClick={handleDisconnectSpotify}>Disconnect Spotify</button>
+            ) : (
+              <button type="button" className="btn" onClick={handleConnectSpotify}>Connect Spotify</button>
+            )}
+          </div>
+        </article>
+
         <article className="recommendation-main">
           <div className="practice-stage__header">
             <div>
@@ -748,31 +801,9 @@ export function RecommendationStudio() {
           </div>
         </article>
 
-        <aside className="recommendation-sidebar">
-          <article className="panel">
-            <div className="section-heading">
-              <p className="eyebrow">Spotify</p>
-              <h4>Audio features</h4>
-            </div>
-            <p className="muted">
-              {spotifyToken
-                ? (spotifyMeta?.audioFeatures ? 'Spotify connected. Audio features enabled.' : 'Spotify connected, but audio features unavailable.')
-                : 'Connect Spotify to unlock full audio features.'}
-            </p>
-            {preferenceStatus === 'loading' ? (
-              <p className="muted">Building your personal model...</p>
-            ) : null}
-            <div className="auth-actions">
-              {spotifyToken ? (
-                <button type="button" className="btn" onClick={handleDisconnectSpotify}>Disconnect Spotify</button>
-              ) : (
-                <button type="button" className="btn" onClick={handleConnectSpotify}>Connect Spotify</button>
-              )}
-            </div>
-          </article>
-
+        <div className="recommendation-stack">
           <audio ref={audioRef} onEnded={() => setPlayingId(null)} />
-          <article className="panel" style={{ marginBottom: 14 }}>
+          <article className="panel">
             <div className="section-heading">
               <p className="eyebrow">Sample info</p>
               <h4>{activeTrack ? activeTrack.title : 'No track selected'}</h4>
@@ -801,6 +832,7 @@ export function RecommendationStudio() {
               <p className="muted">{buildSummary(activeTrack, profile)}</p>
             </div>
           </article>
+
           <article className="panel panel--filled">
             <div className="section-heading">
               <p className="eyebrow">Recommended playlist</p>
@@ -829,6 +861,13 @@ export function RecommendationStudio() {
                   </div>
                   <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
                     <div className="recommendation-score">{Math.round(track.score * 100)}</div>
+                    <button
+                      type="button"
+                      className={`mini-button${similarityId === track.id ? ' active' : ''}`}
+                      onClick={() => setSimilarityId(track.id)}
+                    >
+                      {similarityId === track.id ? 'Comparing' : 'Compare'}
+                    </button>
                     {track.previewUrl ? (
                       <button type="button" className={`mini-button${playingId === track.id ? ' active' : ''}`} onClick={() => playTrack(track)}>
                         {playingId === track.id ? 'Stop' : 'Play'}
@@ -852,6 +891,44 @@ export function RecommendationStudio() {
                 Save this list
               </button>
               {!currentUser ? <span className="auth-hint">Login required to save.</span> : null}
+            </div>
+          </article>
+
+          <article className="panel">
+            <div className="section-heading">
+              <p className="eyebrow">Similarity results</p>
+              <h4>{similarityId ? 'Closest matches' : 'Pick a track to compare'}</h4>
+            </div>
+            {similarityId && similarityResults.length === 0 ? (
+              <p className="muted">No similar tracks found yet.</p>
+            ) : null}
+            <div className="recommendation-list">
+              {similarityResults.map((track, index) => (
+                <div key={track.id} className="recommendation-item">
+                  <div className="recommendation-rank">0{index + 1}</div>
+                  <div className="recommendation-body">
+                    <strong>{track.title}</strong>
+                    <p>
+                      {track.artist} · {track.album}
+                    </p>
+                    <p>
+                      Energy {formatPercent(track.energy)} · Valence {formatPercent(track.valence)} · Dance {formatPercent(track.danceability)} · {Math.round(track.tempo)} BPM
+                    </p>
+                  </div>
+                  <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
+                    <div className="recommendation-score">{Math.round((1 - track.distance) * 100)}</div>
+                    {track.previewUrl ? (
+                      <button type="button" className={`mini-button${playingId === track.id ? ' active' : ''}`} onClick={() => playTrack(track)}>
+                        {playingId === track.id ? 'Stop' : 'Play'}
+                      </button>
+                    ) : track.spotifyUrl ? (
+                      <a className="mini-button" href={track.spotifyUrl} target="_blank" rel="noreferrer">Open</a>
+                    ) : (
+                      <span className="muted">No preview</span>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </article>
 
@@ -918,7 +995,7 @@ export function RecommendationStudio() {
               })}
             </div>
           </article>
-        </aside>
+        </div>
       </div>
     </section>
   );

@@ -902,12 +902,12 @@ select {
 
 .recommendation-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.95fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
 }
 
 .recommendation-main,
-.recommendation-sidebar {
+.recommendation-stack {
   min-width: 0;
 }
 
@@ -986,7 +986,7 @@ select {
   flex: 1 1 160px;
 }
 
-.recommendation-sidebar {
+.recommendation-stack {
   display: grid;
   gap: 14px;
 }
