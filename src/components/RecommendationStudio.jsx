@@ -576,6 +576,7 @@ export function RecommendationStudio() {
     setResultCount(DEFAULTS.resultCount);
     setLikedIds(DEFAULTS.likedIds);
     setBlockedIds(DEFAULTS.blockedIds);
+    setSimilarityId('');
   };
 
   const handleSaveSet = () => {
