@@ -1570,6 +1570,39 @@ select {
   gap: 10px;
 }
 
+.viz-center {
+  display: grid;
+  place-items: center;
+  padding: 22px 16px 6px;
+}
+
+.viz-ball {
+  width: clamp(140px, 22vw, 220px);
+  aspect-ratio: 1;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.08) 40%, transparent 58%),
+    radial-gradient(circle at 50% 50%, rgba(110, 240, 209, 0.9), rgba(134, 183, 255, 0.7) 55%, rgba(7, 16, 25, 0.9) 100%);
+  box-shadow:
+    0 0 40px rgba(110, 240, 209, 0.35),
+    0 0 90px rgba(134, 183, 255, 0.25),
+    inset 0 0 26px rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  animation: vizBallPulse 3.6s ease-in-out infinite;
+}
+
+@keyframes vizBallPulse {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: saturate(1);
+  }
+  50% {
+    transform: scale(1.04);
+    filter: saturate(1.2);
+  }
+}
+
 .viz-panel-grid {
   margin-top: 14px;
   display: grid;

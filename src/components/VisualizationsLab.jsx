@@ -334,6 +334,10 @@ export function VisualizationsLab() {
             <p className="practice-note">Loaded: {loadedLabel}</p>
           </div>
 
+          <div className="viz-center" aria-hidden="true">
+            <div className="viz-ball" />
+          </div>
+
           <div className="viz-panel-grid">
             <article className="viz-card">
               <p className="eyebrow">Oscilloscope</p>
