@@ -184,15 +184,32 @@ app.get('/api/spotify/top-tracks', async (req, res) => {
     let featureMap = new Map();
 
     if (trackIds.length) {
-      const audioFeatures = await fetchJson(
-        `https://api.spotify.com/v1/audio-features?ids=${trackIds.join(',')}`,
-        userToken,
-      );
-      featureMap = new Map(
-        (audioFeatures.audio_features || [])
-          .filter(Boolean)
-          .map((feature) => [feature.id, feature]),
-      );
+      try {
+        const audioFeatures = await fetchJson(
+          `https://api.spotify.com/v1/audio-features?ids=${trackIds.join(',')}`,
+          userToken,
+        );
+        featureMap = new Map(
+          (audioFeatures.audio_features || [])
+            .filter(Boolean)
+            .map((feature) => [feature.id, feature]),
+        );
+      } catch (error) {
+        try {
+          const appToken = await getAccessToken();
+          const audioFeatures = await fetchJson(
+            `https://api.spotify.com/v1/audio-features?ids=${trackIds.join(',')}`,
+            appToken,
+          );
+          featureMap = new Map(
+            (audioFeatures.audio_features || [])
+              .filter(Boolean)
+              .map((feature) => [feature.id, feature]),
+          );
+        } catch (fallbackError) {
+          featureMap = new Map();
+        }
+      }
     }
 
     const results = tracks.map((track) => {
