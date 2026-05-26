@@ -296,6 +296,8 @@ export function VisualizationsLab() {
 
   const peakPct = clamp(Math.round(peak * 100), 0, 100);
   const vuPct = clamp(Math.round(vu * 100), 0, 100);
+  const ballScale = (1 + peak * 0.28).toFixed(3);
+  const ballGlow = (0.22 + vu * 0.85).toFixed(3);
 
   return (
     <section className="visualizations-lab">
@@ -335,7 +337,13 @@ export function VisualizationsLab() {
           </div>
 
           <div className="viz-center" aria-hidden="true">
-            <div className="viz-ball" />
+            <div
+              className="viz-ball"
+              style={{
+                '--ball-scale': ballScale,
+                '--ball-glow': ballGlow,
+              }}
+            />
           </div>
 
           <div className="viz-panel-grid">
