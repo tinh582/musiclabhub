@@ -209,6 +209,7 @@ export function RecommendationStudio() {
   const [blockedIds, setBlockedIds] = useState(DEFAULTS.blockedIds);
   const [hasLoadedState, setHasLoadedState] = useState(false);
   const audioRef = useRef(null);
+  const recommendationRequestId = useRef(0);
   const [playingId, setPlayingId] = useState(null);
   const [spotifyTracks, setSpotifyTracks] = useState([]);
   const [spotifyLoading, setSpotifyLoading] = useState(true);
@@ -432,7 +433,11 @@ export function RecommendationStudio() {
   }, [spotifyToken]);
 
   useEffect(() => {
-    let cancelled = false;
+    const requestId = recommendationRequestId.current + 1;
+    recommendationRequestId.current = requestId;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+
     async function loadSpotifyTracks() {
       setSpotifyLoading(true);
       setSpotifyError('');
@@ -450,25 +455,28 @@ export function RecommendationStudio() {
         const response = await fetch(
           `${API_BASE}/api/spotify/recommendations?${params.toString()}`,
           spotifyToken
-            ? { headers: { Authorization: `Bearer ${spotifyToken}` } }
-            : undefined,
+            ? { headers: { Authorization: `Bearer ${spotifyToken}` }, signal: controller.signal }
+            : { signal: controller.signal },
         );
         const data = await response.json();
         if (!response.ok) {
           throw new Error(data.error || 'Unable to load Spotify recommendations.');
         }
-        if (!cancelled) {
-          setSpotifyTracks(data.tracks || []);
-          setSpotifyMeta(data.meta || null);
-        }
+        if (recommendationRequestId.current !== requestId) return;
+        setSpotifyTracks(data.tracks || []);
+        setSpotifyMeta(data.meta || null);
       } catch (error) {
-        if (!cancelled) {
+        if (recommendationRequestId.current !== requestId) return;
+        if (error.name === 'AbortError') {
+          setSpotifyError('Spotify request timed out. Please try again.');
+        } else {
           setSpotifyError(error.message || 'Unable to load Spotify recommendations.');
-          setSpotifyTracks([]);
-          setSpotifyMeta(null);
         }
+        setSpotifyTracks([]);
+        setSpotifyMeta(null);
       } finally {
-        if (!cancelled) {
+        if (recommendationRequestId.current === requestId) {
+          clearTimeout(timeoutId);
           setSpotifyLoading(false);
         }
       }
@@ -476,7 +484,8 @@ export function RecommendationStudio() {
 
     loadSpotifyTracks();
     return () => {
-      cancelled = true;
+      controller.abort();
+      clearTimeout(timeoutId);
     };
   }, [energy, mood, seedIndex, spotifyToken, resultCount, seedOptions]);
 
