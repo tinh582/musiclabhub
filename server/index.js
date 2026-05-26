@@ -142,6 +142,58 @@ app.get('/api/spotify/exchange', async (req, res) => {
   }
 });
 
+app.get('/api/spotify/top-tracks', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const userToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (!userToken) {
+      res.status(401).json({ error: 'Missing user token.' });
+      return;
+    }
+
+    const limit = Math.min(Number(req.query.limit || 20), 50);
+    const timeRange = req.query.timeRange || 'medium_term';
+
+    const topTracks = await fetchJson(
+      `https://api.spotify.com/v1/me/top/tracks?limit=${limit}&time_range=${timeRange}`,
+      userToken,
+    );
+
+    const tracks = topTracks.items || [];
+    const trackIds = tracks.map((track) => track.id).filter(Boolean);
+    let featureMap = new Map();
+
+    if (trackIds.length) {
+      const audioFeatures = await fetchJson(
+        `https://api.spotify.com/v1/audio-features?ids=${trackIds.join(',')}`,
+        userToken,
+      );
+      featureMap = new Map(
+        (audioFeatures.audio_features || [])
+          .filter(Boolean)
+          .map((feature) => [feature.id, feature]),
+      );
+    }
+
+    const results = tracks.map((track) => {
+      const features = featureMap.get(track.id);
+      return {
+        id: track.id,
+        title: track.name,
+        artist: track.artists.map((artist) => artist.name).join(', '),
+        energy: features?.energy ?? null,
+        valence: features?.valence ?? null,
+        danceability: features?.danceability ?? null,
+        tempo: features?.tempo ?? null,
+      };
+    });
+
+    res.json({ tracks: results });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Server error.' });
+  }
+});
+
 app.get('/api/spotify/seeds', async (req, res) => {
   try {
     const authHeader = req.headers.authorization || '';

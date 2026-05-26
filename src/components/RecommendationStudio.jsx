@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
+import { supabase } from '../lib/supabaseClient';
 import { useAudioFeatures } from '../hooks/useAudioFeatures';
 import { formatDuration } from '../utils/audioFeatures';
 
@@ -11,7 +12,7 @@ function formatPercent(value) {
   return `${Math.round(value * 100)}%`;
 }
 
-function scoreTrack(track, profile, mode) {
+function scoreTrack(track, profile, mode, preference) {
   const energyMatch = 1 - Math.abs(track.energy - profile.energy);
   const valenceMatch = 1 - Math.abs(track.valence - profile.valence);
   const danceMatch = 1 - Math.abs(track.danceability - profile.danceability);
@@ -19,32 +20,45 @@ function scoreTrack(track, profile, mode) {
   const collaborative = track.collaborative;
   const popularity = track.popularity / 100;
   const freshness = 1 - popularity;
+  const personalScore = preference
+    ? (
+        (1 - Math.abs(track.energy - preference.energy)) * 0.3 +
+        (1 - Math.abs(track.valence - preference.valence)) * 0.3 +
+        (1 - Math.abs(track.danceability - preference.danceability)) * 0.2 +
+        (1 - Math.min(Math.abs(track.tempo - preference.tempo) / 120, 1)) * 0.2
+      )
+    : 0;
+  const personalBoost = preference ? personalScore * 0.12 : 0;
 
   if (mode === 'content') {
-    return energyMatch * 0.34 + valenceMatch * 0.3 + danceMatch * 0.2 + tempoMatch * 0.16;
+    return energyMatch * 0.34 + valenceMatch * 0.3 + danceMatch * 0.2 + tempoMatch * 0.16 + personalBoost;
   }
 
   if (mode === 'collab') {
-    return collaborative * 0.55 + popularity * 0.25 + energyMatch * 0.12 + valenceMatch * 0.08;
+    return collaborative * 0.55 + popularity * 0.25 + energyMatch * 0.12 + valenceMatch * 0.08 + personalBoost;
   }
 
   if (mode === 'mood') {
-    return valenceMatch * 0.45 + energyMatch * 0.25 + danceMatch * 0.2 + tempoMatch * 0.1;
+    return valenceMatch * 0.45 + energyMatch * 0.25 + danceMatch * 0.2 + tempoMatch * 0.1 + personalBoost;
   }
 
   if (mode === 'energy') {
-    return energyMatch * 0.5 + tempoMatch * 0.3 + danceMatch * 0.15 + valenceMatch * 0.05;
+    return energyMatch * 0.5 + tempoMatch * 0.3 + danceMatch * 0.15 + valenceMatch * 0.05 + personalBoost;
   }
 
   if (mode === 'discovery') {
-    return freshness * 0.4 + danceMatch * 0.2 + energyMatch * 0.2 + valenceMatch * 0.2;
+    return freshness * 0.4 + danceMatch * 0.2 + energyMatch * 0.2 + valenceMatch * 0.2 + personalBoost * 0.4;
   }
 
   if (mode === 'safe') {
-    return popularity * 0.5 + energyMatch * 0.2 + valenceMatch * 0.2 + danceMatch * 0.1;
+    return popularity * 0.5 + energyMatch * 0.2 + valenceMatch * 0.2 + danceMatch * 0.1 + personalBoost * 0.4;
   }
 
-  return energyMatch * 0.24 + valenceMatch * 0.24 + danceMatch * 0.16 + tempoMatch * 0.14 + collaborative * 0.16 + popularity * 0.06;
+  if (mode === 'personal') {
+    return personalScore * 0.7 + energyMatch * 0.15 + valenceMatch * 0.15;
+  }
+
+  return energyMatch * 0.24 + valenceMatch * 0.24 + danceMatch * 0.16 + tempoMatch * 0.14 + collaborative * 0.16 + popularity * 0.06 + personalBoost;
 }
 
 function buildReason(track, profile, mode) {
@@ -144,6 +158,8 @@ export function RecommendationStudio() {
   const [spotifyMeta, setSpotifyMeta] = useState(null);
   const [seedOptions, setSeedOptions] = useState(SPOTIFY_SEEDS);
   const [seedSource, setSeedSource] = useState('genre');
+  const [preference, setPreference] = useState(null);
+  const [preferenceStatus, setPreferenceStatus] = useState('idle');
 
   useEffect(() => {
     if (!currentUser) {
@@ -257,6 +273,106 @@ export function RecommendationStudio() {
 
   useEffect(() => {
     let cancelled = false;
+
+    async function loadPreference() {
+      if (!spotifyToken) {
+        setPreference(null);
+        return;
+      }
+
+      setPreferenceStatus('loading');
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData?.user?.id;
+      if (!userId) {
+        setPreference(null);
+        setPreferenceStatus('idle');
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('user_preferences')
+        .select('energy, valence, danceability, tempo')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (error) {
+        setPreference(null);
+        setPreferenceStatus('idle');
+        return;
+      }
+
+      if (data) {
+        setPreference({
+          energy: data.energy,
+          valence: data.valence,
+          danceability: data.danceability,
+          tempo: data.tempo,
+        });
+        setPreferenceStatus('ready');
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}/api/spotify/top-tracks`, {
+          headers: { Authorization: `Bearer ${spotifyToken}` },
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.error || 'Unable to load Spotify history.');
+        }
+
+        const tracks = result.tracks || [];
+        const withFeatures = tracks.filter((track) =>
+          track.energy !== null && track.valence !== null && track.danceability !== null && track.tempo !== null,
+        );
+
+        if (!withFeatures.length) {
+          setPreference(null);
+          setPreferenceStatus('idle');
+          return;
+        }
+
+        const avg = withFeatures.reduce((acc, track) => {
+          acc.energy += track.energy;
+          acc.valence += track.valence;
+          acc.danceability += track.danceability;
+          acc.tempo += track.tempo;
+          return acc;
+        }, { energy: 0, valence: 0, danceability: 0, tempo: 0 });
+
+        const preferenceVector = {
+          energy: avg.energy / withFeatures.length,
+          valence: avg.valence / withFeatures.length,
+          danceability: avg.danceability / withFeatures.length,
+          tempo: avg.tempo / withFeatures.length,
+        };
+
+        await supabase
+          .from('user_preferences')
+          .upsert({ user_id: userId, ...preferenceVector, updated_at: new Date().toISOString() });
+
+        if (!cancelled) {
+          setPreference(preferenceVector);
+          setPreferenceStatus('ready');
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPreference(null);
+          setPreferenceStatus('idle');
+        }
+      }
+    }
+
+    loadPreference();
+    return () => {
+      cancelled = true;
+    };
+  }, [spotifyToken]);
+
+  useEffect(() => {
+    let cancelled = false;
     async function loadSpotifyTracks() {
       setSpotifyLoading(true);
       setSpotifyError('');
@@ -330,7 +446,7 @@ export function RecommendationStudio() {
   const rankedTracks = useMemo(() => {
     return spotifyTracks.filter((track) => !blockedIds.includes(track.id))
       .map((track) => {
-        const base = scoreTrack(track, profile, mode);
+        const base = scoreTrack(track, profile, mode, preference);
         const likeBoost = likedIds.includes(track.id) ? 0.08 : 0;
         const score = clamp(base + likeBoost, 0, 1);
         return {
@@ -341,7 +457,7 @@ export function RecommendationStudio() {
       })
       .sort((a, b) => b.score - a.score)
         .slice(0, resultCount);
-      }, [blockedIds, likedIds, mode, profile, resultCount, spotifyTracks]);
+      }, [blockedIds, likedIds, mode, preference, profile, resultCount, spotifyTracks]);
 
   const activeTrack = playingId
     ? spotifyTracks.find((t) => t.id === playingId)
@@ -353,6 +469,24 @@ export function RecommendationStudio() {
       current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
     );
     setBlockedIds((current) => current.filter((item) => item !== id));
+
+    const likedTrack = spotifyTracks.find((track) => track.id === id);
+    if (likedTrack && preference) {
+      const nextPreference = {
+        energy: clamp(preference.energy * 0.8 + likedTrack.energy * 0.2, 0, 1),
+        valence: clamp(preference.valence * 0.8 + likedTrack.valence * 0.2, 0, 1),
+        danceability: clamp(preference.danceability * 0.8 + likedTrack.danceability * 0.2, 0, 1),
+        tempo: preference.tempo * 0.8 + likedTrack.tempo * 0.2,
+      };
+      setPreference(nextPreference);
+      supabase.auth.getUser().then(({ data }) => {
+        if (data?.user?.id) {
+          supabase
+            .from('user_preferences')
+            .upsert({ user_id: data.user.id, ...nextPreference, updated_at: new Date().toISOString() });
+        }
+      });
+    }
   };
 
   const toggleBlock = (id) => {
@@ -459,7 +593,7 @@ export function RecommendationStudio() {
             <div className="control-card">
               <p className="eyebrow">Recommendation mode</p>
               <div className="seed-grid">
-                {['hybrid', 'content', 'collab', 'mood', 'energy', 'discovery', 'safe'].map((item) => (
+                {['hybrid', 'content', 'collab', 'mood', 'energy', 'discovery', 'safe', 'personal'].map((item) => (
                   <button
                     key={item}
                     type="button"
@@ -552,6 +686,9 @@ export function RecommendationStudio() {
                 ? (spotifyMeta?.audioFeatures ? 'Spotify connected. Audio features enabled.' : 'Spotify connected, but audio features unavailable.')
                 : 'Connect Spotify to unlock full audio features.'}
             </p>
+            {preferenceStatus === 'loading' ? (
+              <p className="muted">Building your personal model...</p>
+            ) : null}
             <div className="auth-actions">
               {spotifyToken ? (
                 <button type="button" className="btn" onClick={handleDisconnectSpotify}>Disconnect Spotify</button>
