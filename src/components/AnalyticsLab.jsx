@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { useLocale } from '../i18n/LocaleProvider';
-import { CATALOG, buildCatalog } from '../data/catalog';
+import { buildCatalog } from '../data/catalog';
 
 function groupByGenre(catalog) {
   const map = {};
@@ -60,8 +60,8 @@ export function AnalyticsLab() {
 
   const filtered = useMemo(() => {
     return dataset.filter((d) => {
-      const t = Number(d.tempo || 0);
-      if (t < tempoRange[0] || t > tempoRange[1]) return false;
+      const tempo = Number(d.tempo || 0);
+      if (tempo < tempoRange[0] || tempo > tempoRange[1]) return false;
       if (selectedGenres && selectedGenres.length) return selectedGenres.includes(d.genre);
       return true;
     });
@@ -88,8 +88,8 @@ export function AnalyticsLab() {
     const bins = 8;
     const size = (max - min) / bins || 1;
     const counts = new Array(bins).fill(0);
-    tempos.forEach((t) => {
-      let idx = Math.floor((t - min) / size);
+    tempos.forEach((tempo) => {
+      let idx = Math.floor((tempo - min) / size);
       if (idx >= bins) idx = bins - 1;
       counts[idx] += 1;
     });
@@ -97,9 +97,7 @@ export function AnalyticsLab() {
     return ranges;
   }, [filtered]);
 
-  const scatterPoints = useMemo(() => filtered.map((t) => ({ x: Number(t.energy || 0), y: Number(t.valence || 0), genre: t.genre, title: `${t.title || ''} — ${t.artist || ''}` })), [filtered]);
-
-  const { t } = useLocale();
+  const scatterPoints = useMemo(() => filtered.map((track) => ({ x: Number(track.energy || 0), y: Number(track.valence || 0), genre: track.genre, title: `${track.title || ''} — ${track.artist || ''}` })), [filtered]);
 
   function handleFile(e) {
     const f = e.target.files && e.target.files[0];

@@ -108,9 +108,8 @@ export function ClassificationLab() {
     out.dispose();
   }
 
-  const selected = useMemo(() => (localizedCatalog.find((t) => t.id === selectedId) || CATALOG.find((t) => t.id === selectedId)), [selectedId, localizedCatalog]);
+  const selected = useMemo(() => (localizedCatalog.find((track) => track.id === selectedId) || CATALOG.find((track) => track.id === selectedId)), [selectedId, localizedCatalog]);
   const { data: audioInfo, loading: audioLoading } = useAudioFeatures(selected?.audioUrl);
-  const { t } = useLocale();
 
   function playDemo(track) {
     const audio = audioRef.current;
@@ -143,8 +142,8 @@ export function ClassificationLab() {
             <label className="slider-card">
               <span>{t('class.selectTrack', 'Select track')}</span>
                 <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)} style={{ width: '100%', marginTop: 8 }}>
-                {(localizedCatalog || CATALOG).map((t) => (
-                  <option key={t.id} value={t.id}>{`${t.title} — ${t.artist}`}</option>
+                {(localizedCatalog || CATALOG).map((track) => (
+                  <option key={track.id} value={track.id}>{`${track.title} — ${track.artist}`}</option>
                 ))}
               </select>
             </label>
