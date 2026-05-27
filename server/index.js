@@ -300,8 +300,8 @@ app.get('/api/spotify/recommendations', async (req, res) => {
     const energy = Number(req.query.energy || 0.7);
     const mood = Number(req.query.mood || 0.6);
     const tempo = Number(req.query.tempo || 120);
-    const requestedLimit = Math.min(Number(req.query.limit || 30), 50);
-    const offsets = [0, 20, 40].filter((offset) => offset < requestedLimit);
+    const requestedLimit = Math.min(Number(req.query.limit || 30), 40);
+    const offsets = [0, 20].filter((offset) => offset < requestedLimit);
 
     const queries = seedArtistName
       ? [`artist:"${seedArtistName}"`, seedArtistName]
@@ -336,11 +336,13 @@ app.get('/api/spotify/recommendations', async (req, res) => {
             { retries: 1, baseDelayMs: 400, timeoutMs: 12000 },
           );
         }
-        throw error;
+        return { tracks: { items: [] } };
       }
     });
 
-    const searchResults = await Promise.all(searchPromises);
+    const searchResults = (await Promise.allSettled(searchPromises))
+      .filter((result) => result.status === 'fulfilled')
+      .map((result) => result.value);
     const tracksFromSearch = searchResults
       .flatMap((result) => result.tracks?.items || [])
       .filter(Boolean);
@@ -360,6 +362,7 @@ app.get('/api/spotify/recommendations', async (req, res) => {
         const audioFeatures = await fetchJson(
           `https://api.spotify.com/v1/audio-features?ids=${trackIds.join(',')}`,
           token,
+          { retries: 1, baseDelayMs: 400, timeoutMs: 12000 },
         );
         featureMap = new Map(
           (audioFeatures.audio_features || [])

@@ -995,9 +995,15 @@ export function RecommendationStudio() {
                       <button type="button" className={`mini-button${isBlocked ? ' active' : ''}`} onClick={() => toggleBlock(track.id)}>
                         {isBlocked ? 'Blocked' : 'Block'}
                       </button>
-                      <button type="button" className={`mini-button${playingId === track.id ? ' active' : ''}`} onClick={() => playTrack(track)}>
-                        {playingId === track.id ? 'Stop' : (track.previewUrl ? 'Play' : 'No preview')}
-                      </button>
+                      {track.previewUrl ? (
+                        <button type="button" className={`mini-button${playingId === track.id ? ' active' : ''}`} onClick={() => playTrack(track)}>
+                          {playingId === track.id ? 'Stop' : 'Play'}
+                        </button>
+                      ) : track.spotifyUrl ? (
+                        <a className="mini-button" href={track.spotifyUrl} target="_blank" rel="noreferrer">Open</a>
+                      ) : (
+                        <span className="muted">No preview</span>
+                      )}
                     </div>
                   </div>
                 );
