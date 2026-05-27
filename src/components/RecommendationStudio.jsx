@@ -222,6 +222,7 @@ export function RecommendationStudio() {
   const [preference, setPreference] = useState(null);
   const [preferenceStatus, setPreferenceStatus] = useState('idle');
   const [similarityId, setSimilarityId] = useState('');
+  const similaritySectionRef = useRef(null);
   const { t } = useLocale();
 
   useEffect(() => {
@@ -260,6 +261,11 @@ export function RecommendationStudio() {
     }
     setHasLoadedState(true);
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!similarityId) return;
+    similaritySectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [similarityId]);
 
   useEffect(() => {
     const refreshToken = () => setSpotifyToken(getSpotifyToken());
@@ -905,7 +911,7 @@ export function RecommendationStudio() {
             </div>
           </article>
 
-          <article className="panel">
+          <article className="panel" ref={similaritySectionRef}>
             <div className="section-heading">
               <p className="eyebrow">{t('rec.similarity.eyebrow', 'Similarity results')}</p>
               <h4>{similarityId ? t('rec.similarity.matches', 'Closest matches') : t('rec.similarity.pick', 'Pick a track to compare')}</h4>
