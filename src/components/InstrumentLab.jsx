@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useLocale } from '../i18n/LocaleProvider';
 
 const baseNotes = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const keyToCode = { KeyA: 0, KeyW:1, KeyS:2, KeyE:3, KeyD:4, KeyF:5, KeyT:6, KeyG:7, KeyY:8, KeyH:9, KeyU:10, KeyJ:11, KeyK:12 };
@@ -384,16 +385,18 @@ export function InstrumentLab() {
   }
   function deletePreset(name) { const next = presets.filter((x)=>x.name!==name); setPresets(next); localStorage.setItem('instr-presets', JSON.stringify(next)); }
 
+  const { t } = useLocale();
+
   return (
     <section className="instrument-lab">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <p className="eyebrow">Smart Instrument</p>
-          <h4>Polyphonic synth — play with mouse, pointer or keyboard</h4>
+          <p className="eyebrow">{t('instrument.title', 'Smart Instrument')}</p>
+          <h4>{t('instrument.subtitle', 'Polyphonic synth — play with mouse, pointer or keyboard')}</h4>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button className="btn" onClick={() => ensureCtx()}>Init Audio</button>
-          <label className="form-label" style={{ marginLeft: 8 }}>Wave</label>
+          <button className="btn" onClick={() => ensureCtx()}>{t('instrument.initAudio', 'Init Audio')}</button>
+          <label className="form-label" style={{ marginLeft: 8 }}>{t('instrument.wave', 'Wave')}</label>
           <select value={wave} onChange={(e) => setWave(e.target.value)}>
             <option value="sine">sine</option>
             <option value="square">square</option>
@@ -401,14 +404,14 @@ export function InstrumentLab() {
             <option value="triangle">triangle</option>
           </select>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginLeft: 8 }}>
-            <button className="btn" onClick={() => { if (!isRecording) startRecording(); else stopRecording(); }}>{isRecording ? 'Stop Rec' : 'Record'}</button>
-            {recordUrl && <a className="btn" href={recordUrl} download="synth.webm">Download</a>}
-            <button className="btn" onClick={() => exportWavFromRecordedBlob()}>Export WAV</button>
-            <button className="btn" onClick={() => exportMIDI()}>Export MIDI</button>
-            <button className="btn" onClick={() => requestMidiAccess()}>MIDI Connect</button>
+            <button className="btn" onClick={() => { if (!isRecording) startRecording(); else stopRecording(); }}>{isRecording ? t('instrument.stopRec', 'Stop Rec') : t('instrument.record', 'Record')}</button>
+            {recordUrl && <a className="btn" href={recordUrl} download="synth.webm">{t('instrument.download', 'Download')}</a>}
+            <button className="btn" onClick={() => exportWavFromRecordedBlob()}>{t('instrument.exportWav', 'Export WAV')}</button>
+            <button className="btn" onClick={() => exportMIDI()}>{t('instrument.exportMidi', 'Export MIDI')}</button>
+            <button className="btn" onClick={() => requestMidiAccess()}>{t('instrument.midiConnect', 'MIDI Connect')}</button>
             {midiOutputs.length > 0 && (
               <select value={selectedMidiOut ? selectedMidiOut.id : ''} onChange={(e) => { const out = midiOutputs.find(o => o.id === e.target.value); setSelectedMidiOut(out || null); }}>
-                <option value="">Select MIDI Out</option>
+                <option value="">{t('instrument.midiSelect', 'Select MIDI Out')}</option>
                 {midiOutputs.map((o) => (<option key={o.id} value={o.id}>{o.name || o.id}</option>))}
               </select>
             )}
@@ -419,39 +422,39 @@ export function InstrumentLab() {
       <div className="panel" style={{ marginTop: 12 }}>
         <div className="controls-row">
           <div>
-            <label className="form-label">Attack</label>
+            <label className="form-label">{t('instrument.attack', 'Attack')}</label>
             <input type="range" min={0.001} max={0.5} step={0.001} value={attack} onChange={(e) => setAttack(Number(e.target.value))} />
           </div>
           <div>
-            <label className="form-label">Release</label>
+            <label className="form-label">{t('instrument.release', 'Release')}</label>
             <input type="range" min={0.01} max={1.5} step={0.01} value={release} onChange={(e) => setRelease(Number(e.target.value))} />
           </div>
           <div>
-            <label className="form-label">Master</label>
+            <label className="form-label">{t('instrument.master', 'Master')}</label>
             <input type="range" min={0} max={1} step={0.01} value={masterGain} onChange={(e) => setMasterGain(Number(e.target.value))} />
           </div>
           <div>
-            <label className="form-label">Octaves</label>
+            <label className="form-label">{t('instrument.octaves', 'Octaves')}</label>
             <input type="range" min={1} max={6} step={1} value={octaves} onChange={(e) => setOctaves(Number(e.target.value))} />
           </div>
           <div>
-            <label className="form-label">Base octave</label>
+            <label className="form-label">{t('instrument.baseOctave', 'Base octave')}</label>
             <input type="number" min={0} max={8} value={baseOctave} onChange={(e) => setBaseOctave(Number(e.target.value))} />
           </div>
           <div>
-            <label className="form-label">Velocity curve</label>
+            <label className="form-label">{t('instrument.velocity', 'Velocity curve')}</label>
             <input type="range" min={0.2} max={3} step={0.01} value={velocityCurve} onChange={(e)=> setVelocityCurve(Number(e.target.value))} />
           </div>
           <div>
-            <label className="form-label">Sustain</label>
+            <label className="form-label">{t('instrument.sustain', 'Sustain')}</label>
             <input type="checkbox" checked={sustain} onChange={(e)=> { setSustain(e.target.checked); if (!e.target.checked) releaseSustained(); }} />
           </div>
           <div>
-            <label className="form-label">Quantize tempo</label>
+            <label className="form-label">{t('instrument.quantizeTempo', 'Quantize tempo')}</label>
             <input type="number" min={30} max={300} value={quantizeTempo} onChange={(e)=> setQuantizeTempo(Number(e.target.value))} />
           </div>
           <div>
-            <label className="form-label">Resolution</label>
+            <label className="form-label">{t('instrument.resolution', 'Resolution')}</label>
             <select value={quantizeRes} onChange={(e)=> setQuantizeRes(Number(e.target.value))}>
               <option value={1}>1/1</option>
               <option value={2}>1/2</option>
@@ -485,20 +488,20 @@ export function InstrumentLab() {
           ))}
         </div>
 
-        <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input placeholder="Preset name" id="presetName" />
-          <button className="btn" onClick={() => { const el = document.getElementById('presetName'); if (el && el.value) savePreset(el.value); }}>Save Preset</button>
+          <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input placeholder={t('instrument.presetName', 'Preset name')} id="presetName" />
+          <button className="btn" onClick={() => { const el = document.getElementById('presetName'); if (el && el.value) savePreset(el.value); }}>{t('instrument.savePreset', 'Save Preset')}</button>
           <select onChange={(e)=> loadPreset(e.target.value)}>
-            <option value="">Load preset</option>
+            <option value="">{t('instrument.loadPreset', 'Load preset')}</option>
             {presets.map((p)=> (<option key={p.name} value={p.name}>{p.name}</option>))}
           </select>
           <select onChange={(e)=> deletePreset(e.target.value)}>
-            <option value="">Delete preset</option>
+            <option value="">{t('instrument.deletePreset', 'Delete preset')}</option>
             {presets.map((p)=> (<option key={p.name} value={p.name}>{p.name}</option>))}
           </select>
         </div>
 
-        <p style={{ marginTop: 10, color: 'var(--muted)' }}>Tip: Use keys A/W/S/E... to play the center octave. Drag horizontally on the keyboard to shift octaves. Use pointer pressure or vertical position for velocity.</p>
+        <p style={{ marginTop: 10, color: 'var(--muted)' }}>{t('instrument.tip', 'Tip: Use keys A/W/S/E... to play the center octave. Drag horizontally on the keyboard to shift octaves. Use pointer pressure or vertical position for velocity.')}</p>
       </div>
     </section>
   );

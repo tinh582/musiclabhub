@@ -111,3 +111,19 @@ export const SEEDS = [
   { label: 'Warm upbeat', energy: 0.56, valence: 0.8, danceability: 0.63, tempo: 102 },
   { label: 'Late night', energy: 0.36, valence: 0.4, danceability: 0.42, tempo: 90 },
 ];
+
+export function buildCatalog(t) {
+  return CATALOG.map((track) => ({
+    ...track,
+    title: t(`catalog.${track.id}.title`, track.title),
+    artist: t(`catalog.${track.id}.artist`, track.artist),
+    genre: t(`catalog.${track.id}.genre`, track.genre),
+  }));
+}
+
+export function buildSeeds(t) {
+  return SEEDS.map((s, idx) => ({
+    ...s,
+    label: t(`catalog.seed.${idx}.label`, s.label),
+  }));
+}

@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { navigationItems } from '../data/siteContent';
+import { useLocale } from '../i18n/LocaleProvider';
+import { useSiteContent } from '../hooks/useSiteContent';
 import { supabase } from '../lib/supabaseClient';
 
 export function Layout() {
+  const { locale, setLocale, t } = useLocale();
+  const { navigationItems } = useSiteContent();
   const [showBrand, setShowBrand] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
 
@@ -69,8 +72,8 @@ export function Layout() {
           <div className="brand-block">
             <div className="brand-mark">MLH</div>
             <div>
-              <p className="eyebrow">Graduation project</p>
-              <h1>Music Lab Hub</h1>
+              <p className="eyebrow">{t('layout.brandTag', 'Graduation project')}</p>
+              <h1>{t('layout.appName', 'Music Lab Hub')}</h1>
             </div>
           </div>
         ) : (
@@ -79,11 +82,11 @@ export function Layout() {
 
         <div className="sidebar-auth">
           <NavLink to={currentUser ? '/account' : '/login'} className="mini-button">
-            {currentUser ? 'Account' : 'Login'}
+            {currentUser ? t('layout.account', 'Account') : t('layout.login', 'Login')}
           </NavLink>
         </div>
 
-        <nav className="nav-list" aria-label="Site navigation">
+        <nav className="nav-list" aria-label={t('layout.nav.aria', 'Site navigation')}>
           {navigationItems.map((item) => (
             <NavLink
               key={item.path}
@@ -101,10 +104,29 @@ export function Layout() {
       <main className="content-shell">
         <header className="topbar">
           <div>
-            <p className="eyebrow">Vite + React + music systems</p>
-            <h2>One interface, nine music modules, and a clean thesis story.</h2>
+            <p className="eyebrow">{t('layout.topbar.eyebrow', 'Vite + React + music systems')}</p>
+            <h2>{t('layout.topbar.title', 'One interface, nine music modules, and a clean thesis story.')}</h2>
           </div>
-          <div className="topbar-chip">Ready for prototyping</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span className="topbar-chip">{t('layout.topbar.status', 'Ready for prototyping')}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className="eyebrow" style={{ margin: 0 }}>{t('layout.language', 'Language')}</span>
+              <button
+                type="button"
+                className={`mini-button${locale === 'en' ? ' active' : ''}`}
+                onClick={() => setLocale('en')}
+              >
+                {t('layout.language.en', 'English')}
+              </button>
+              <button
+                type="button"
+                className={`mini-button${locale === 'vi' ? ' active' : ''}`}
+                onClick={() => setLocale('vi')}
+              >
+                {t('layout.language.vi', 'Vietnamese')}
+              </button>
+            </div>
+          </div>
         </header>
 
         <section className="page-root">

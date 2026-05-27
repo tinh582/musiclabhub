@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocale } from '../i18n/LocaleProvider';
 import { useOutletContext } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { useAudioFeatures } from '../hooks/useAudioFeatures';
@@ -221,6 +222,7 @@ export function RecommendationStudio() {
   const [preference, setPreference] = useState(null);
   const [preferenceStatus, setPreferenceStatus] = useState('idle');
   const [similarityId, setSimilarityId] = useState('');
+  const { t } = useLocale();
 
   useEffect(() => {
     if (!currentUser) {
@@ -674,22 +676,22 @@ export function RecommendationStudio() {
       <div className="recommendation-layout">
         <article className="panel">
           <div className="section-heading">
-            <p className="eyebrow">Spotify</p>
-            <h4>Audio features</h4>
+            <p className="eyebrow">{t('rec.spotAuth.eyebrow', 'Spotify')}</p>
+            <h4>{t('rec.spotAuth.title', 'Audio features')}</h4>
           </div>
           <p className="muted">
             {spotifyToken
-              ? (spotifyMeta?.audioFeatures ? 'Spotify connected. Audio features enabled.' : 'Spotify connected, but audio features unavailable.')
-              : 'Connect Spotify to unlock full audio features.'}
+              ? (spotifyMeta?.audioFeatures ? t('rec.spotAuth.connected', 'Spotify connected. Audio features enabled.') : t('rec.spotAuth.connectedLimited', 'Spotify connected, but audio features unavailable.'))
+              : t('rec.spotAuth.disconnected', 'Connect Spotify to unlock full audio features.')}
           </p>
           {preferenceStatus === 'loading' ? (
-            <p className="muted">Building your personal model...</p>
+            <p className="muted">{t('rec.spotAuth.loading', 'Building your personal model...')}</p>
           ) : null}
           <div className="auth-actions">
             {spotifyToken ? (
-              <button type="button" className="btn" onClick={handleDisconnectSpotify}>Disconnect Spotify</button>
+              <button type="button" className="btn" onClick={handleDisconnectSpotify}>{t('rec.spotAuth.disconnect', 'Disconnect Spotify')}</button>
             ) : (
-              <button type="button" className="btn" onClick={handleConnectSpotify}>Connect Spotify</button>
+              <button type="button" className="btn" onClick={handleConnectSpotify}>{t('rec.spotAuth.connect', 'Connect Spotify')}</button>
             )}
           </div>
         </article>
@@ -697,15 +699,15 @@ export function RecommendationStudio() {
         <article className="recommendation-main">
           <div className="practice-stage__header">
             <div>
-              <p className="eyebrow">Hybrid playlist generator</p>
-              <h4>Recommendation Studio</h4>
+              <p className="eyebrow">{t('rec.playlist.eyebrow', 'Hybrid playlist generator')}</p>
+              <h4>{t('rec.playlist.header', 'Recommendation Studio')}</h4>
             </div>
-            <span className="status-pill status-pill--live">Working in browser</span>
+            <span className="status-pill status-pill--live">{t('rec.status.working', 'Working in browser')}</span>
           </div>
 
           <div className="recommendation-controls">
             <div className="control-card">
-              <p className="eyebrow">Seed track</p>
+              <p className="eyebrow">{t('rec.seed.eyebrow', 'Seed track')}</p>
               <div className="seed-grid">
                 {seedOptions.map((seed, index) => (
                   <button
@@ -720,13 +722,13 @@ export function RecommendationStudio() {
               </div>
               <p className="muted" style={{ marginTop: 10 }}>
                 {seedSource === 'artist'
-                  ? 'Seeded from your top Spotify artists.'
-                  : 'Seeded from Spotify genres.'}
+                  ? t('rec.seed.artist', 'Seeded from your top Spotify artists.')
+                  : t('rec.seed.genre', 'Seeded from Spotify genres.')}
               </p>
             </div>
 
             <div className="control-card">
-              <p className="eyebrow">Recommendation mode</p>
+              <p className="eyebrow">{t('rec.mode.eyebrow', 'Recommendation mode')}</p>
               <div className="seed-grid">
                 {['hybrid', 'content', 'collab', 'mood', 'energy', 'discovery', 'safe', 'personal'].map((item) => (
                   <button
@@ -742,7 +744,7 @@ export function RecommendationStudio() {
             </div>
 
             <div className="control-card">
-              <p className="eyebrow">Results count</p>
+              <p className="eyebrow">{t('rec.results.eyebrow', 'Results count')}</p>
               <div className="seed-grid">
                 {[5, 10, 15, 20].map((count) => (
                   <button
@@ -759,7 +761,7 @@ export function RecommendationStudio() {
 
             <div className="slider-grid">
               <label className="slider-card">
-                <span>Mood</span>
+                <span>{t('rec.target.valence', 'Mood')}</span>
                 <strong>{formatPercent(mood)}</strong>
                 <input
                   type="range"
@@ -772,7 +774,7 @@ export function RecommendationStudio() {
               </label>
 
               <label className="slider-card">
-                <span>Energy</span>
+                <span>{t('rec.target.energy', 'Energy')}</span>
                 <strong>{formatPercent(energy)}</strong>
                 <input
                   type="range"
@@ -788,24 +790,24 @@ export function RecommendationStudio() {
 
           <div className="profile-strip">
             <article className="profile-card">
-              <p>Target energy</p>
+              <p>{t('rec.target.energy', 'Target energy')}</p>
               <strong>{formatPercent(profile.energy)}</strong>
             </article>
             <article className="profile-card">
-              <p>Target valence</p>
+              <p>{t('rec.target.valence', 'Target valence')}</p>
               <strong>{formatPercent(profile.valence)}</strong>
             </article>
             <article className="profile-card">
-              <p>Target tempo</p>
+              <p>{t('rec.target.tempo', 'Target tempo')}</p>
               <strong>{profile.tempo} BPM</strong>
             </article>
             <article className="profile-card">
-              <p>Top signals</p>
+              <p>{t('rec.topSignals', 'Top signals')}</p>
               <strong>{mode.toUpperCase()}</strong>
             </article>
             <article className="profile-card">
-              <p>Catalog state</p>
-              <strong>{blockedIds.length} blocked</strong>
+              <p>{t('rec.catalogState', 'Catalog state')}</p>
+              <strong>{t('rec.blockedCount', '{count} blocked', { count: blockedIds.length })}</strong>
             </article>
           </div>
         </article>
@@ -814,29 +816,29 @@ export function RecommendationStudio() {
           <audio ref={audioRef} onEnded={() => setPlayingId(null)} />
           <article className="panel">
             <div className="section-heading">
-              <p className="eyebrow">Sample info</p>
-              <h4>{activeTrack ? activeTrack.title : 'No track selected'}</h4>
+              <p className="eyebrow">{t('rec.sample.eyebrow', 'Sample info')}</p>
+              <h4>{activeTrack ? activeTrack.title : t('rec.summary.noTrack', 'No track selected')}</h4>
             </div>
             <div style={{ display: 'grid', gap: 6, marginTop: 6 }}>
-              <span style={{ color: 'var(--muted)' }}>Artist: {activeTrack ? activeTrack.artist : 'n/a'}</span>
-              <span style={{ color: 'var(--muted)' }}>Album: {activeTrack ? activeTrack.album : 'n/a'}</span>
-              <span style={{ color: 'var(--muted)' }}>Popularity: {activeTrack ? activeTrack.popularity : 'n/a'}</span>
-              <span style={{ color: 'var(--muted)' }}>Preview: {activeTrack?.previewUrl ? 'Available' : 'Not available'}</span>
+              <span style={{ color: 'var(--muted)' }}>{t('rec.label.artist', 'Artist')}: {activeTrack ? activeTrack.artist : t('rec.na', 'n/a')}</span>
+              <span style={{ color: 'var(--muted)' }}>{t('rec.label.album', 'Album')}: {activeTrack ? activeTrack.album : t('rec.na', 'n/a')}</span>
+              <span style={{ color: 'var(--muted)' }}>{t('rec.label.popularity', 'Popularity')}: {activeTrack ? activeTrack.popularity : t('rec.na', 'n/a')}</span>
+              <span style={{ color: 'var(--muted)' }}>{t('rec.label.preview', 'Preview')}: {activeTrack?.previewUrl ? t('rec.preview.available', 'Available') : t('rec.preview.notAvailable', 'Not available')}</span>
               {activeTrack?.spotifyUrl ? (
                 <span style={{ color: 'var(--muted)' }}>
-                  <a href={activeTrack.spotifyUrl} target="_blank" rel="noreferrer">Open in Spotify</a>
+                  <a href={activeTrack.spotifyUrl} target="_blank" rel="noreferrer">{t('rec.openSpotify', 'Open in Spotify')}</a>
                 </span>
               ) : null}
-              <span style={{ color: 'var(--muted)' }}>Energy: {activeTrack ? formatPercent(activeTrack.energy) : 'n/a'}</span>
-              <span style={{ color: 'var(--muted)' }}>Valence: {activeTrack ? formatPercent(activeTrack.valence) : 'n/a'}</span>
-              <span style={{ color: 'var(--muted)' }}>Danceability: {activeTrack ? formatPercent(activeTrack.danceability) : 'n/a'}</span>
-              <span style={{ color: 'var(--muted)' }}>Duration: {audioLoading || !audioInfo ? 'Loading...' : formatDuration(audioInfo.duration)}</span>
-              <span style={{ color: 'var(--muted)' }}>Tempo: {audioLoading || !audioInfo ? 'Loading...' : (audioInfo.tempo ? `${audioInfo.tempo} BPM` : 'n/a')}</span>
+              <span style={{ color: 'var(--muted)' }}>{t('rec.label.energy', 'Energy')}: {activeTrack ? formatPercent(activeTrack.energy) : t('rec.na', 'n/a')}</span>
+              <span style={{ color: 'var(--muted)' }}>{t('rec.label.valence', 'Valence')}: {activeTrack ? formatPercent(activeTrack.valence) : t('rec.na', 'n/a')}</span>
+              <span style={{ color: 'var(--muted)' }}>{t('rec.label.dance', 'Danceability')}: {activeTrack ? formatPercent(activeTrack.danceability) : t('rec.na', 'n/a')}</span>
+              <span style={{ color: 'var(--muted)' }}>{t('rec.label.duration', 'Duration')}: {audioLoading || !audioInfo ? t('rec.loadingShort', 'Loading...') : formatDuration(audioInfo.duration)}</span>
+              <span style={{ color: 'var(--muted)' }}>{t('rec.label.tempo', 'Tempo')}: {audioLoading || !audioInfo ? t('rec.loadingShort', 'Loading...') : (audioInfo.tempo ? `${audioInfo.tempo} BPM` : t('rec.na', 'n/a'))}</span>
             </div>
             <div style={{ marginTop: 12 }} className="panel panel--filled">
               <div className="section-heading">
-                <p className="eyebrow">AI mood label</p>
-                <h4>{activeTrack ? moodLabelFromFeatures(activeTrack) : 'n/a'}</h4>
+                <p className="eyebrow">{t('rec.aiMood.eyebrow', 'AI mood label')}</p>
+                <h4>{activeTrack ? moodLabelFromFeatures(activeTrack) : t('rec.na', 'n/a')}</h4>
               </div>
               <p className="muted">{buildSummary(activeTrack, profile)}</p>
             </div>
@@ -844,12 +846,12 @@ export function RecommendationStudio() {
 
           <article className="panel panel--filled">
             <div className="section-heading">
-              <p className="eyebrow">Recommended playlist</p>
-              <h4>Top {rankedTracks.length} tracks</h4>
+              <p className="eyebrow">{t('rec.playlist.eyebrow', 'Recommended playlist')}</p>
+              <h4>{t('rec.playlist.title', 'Top {count} tracks', { count: rankedTracks.length })}</h4>
             </div>
             <div className="recommendation-list">
               {spotifyLoading ? (
-                <div className="recommendation-empty">Loading Spotify recommendations...</div>
+                <div className="recommendation-empty">{t('rec.loading', 'Loading Spotify recommendations...')}</div>
               ) : null}
               {spotifyError ? (
                 <div className="recommendation-empty">{spotifyError}</div>
@@ -875,16 +877,16 @@ export function RecommendationStudio() {
                       className={`mini-button${similarityId === track.id ? ' active' : ''}`}
                       onClick={() => setSimilarityId(track.id)}
                     >
-                      {similarityId === track.id ? 'Comparing' : 'Compare'}
+                      {similarityId === track.id ? t('rec.comparing', 'Comparing') : t('rec.compare', 'Compare')}
                     </button>
                     {track.previewUrl ? (
                       <button type="button" className={`mini-button${playingId === track.id ? ' active' : ''}`} onClick={() => playTrack(track)}>
-                        {playingId === track.id ? 'Stop' : 'Play'}
+                        {playingId === track.id ? t('rec.stop', 'Stop') : t('rec.play', 'Play')}
                       </button>
                     ) : track.spotifyUrl ? (
-                      <a className="mini-button" href={track.spotifyUrl} target="_blank" rel="noreferrer">Open</a>
+                      <a className="mini-button" href={track.spotifyUrl} target="_blank" rel="noreferrer">{t('rec.open', 'Open')}</a>
                     ) : (
-                      <span className="muted">No preview</span>
+                      <span className="muted">{t('rec.noPreview', 'No preview')}</span>
                     )}
                   </div>
                 </div>
@@ -897,16 +899,16 @@ export function RecommendationStudio() {
                 onClick={handleSaveSet}
                 disabled={!currentUser}
               >
-                Save this list
+                {t('rec.save', 'Save this list')}
               </button>
-              {!currentUser ? <span className="auth-hint">Login required to save.</span> : null}
+              {!currentUser ? <span className="auth-hint">{t('rec.loginRequired', 'Login required to save.')}</span> : null}
             </div>
           </article>
 
           <article className="panel">
             <div className="section-heading">
-              <p className="eyebrow">Similarity results</p>
-              <h4>{similarityId ? 'Closest matches' : 'Pick a track to compare'}</h4>
+              <p className="eyebrow">{t('rec.similarity.eyebrow', 'Similarity results')}</p>
+              <h4>{similarityId ? t('rec.similarity.matches', 'Closest matches') : t('rec.similarity.pick', 'Pick a track to compare')}</h4>
             </div>
             {similarityId && similarityResults.length === 0 ? (
               <p className="muted">No similar tracks found yet.</p>
@@ -943,38 +945,38 @@ export function RecommendationStudio() {
 
           <article className="panel">
             <div className="section-heading">
-              <p className="eyebrow">Saved sets</p>
-              <h4>Recommendation history</h4>
+              <p className="eyebrow">{t('rec.saved.eyebrow', 'Saved sets')}</p>
+              <h4>{t('rec.saved.title', 'Recommendation history')}</h4>
             </div>
             {currentUser ? (
               <div className="saved-list">
                 {savedSets.length === 0 ? (
-                  <p className="muted">No saved lists yet.</p>
+                  <p className="muted">{t('rec.saved.empty', 'No saved lists yet.')}</p>
                 ) : (
                   savedSets.map((set) => (
                     <div key={set.id} className="saved-card">
                       <div>
                         <strong>{set.seed} · {set.mode.toUpperCase()}</strong>
-                        <p>Mood {formatPercent(set.mood)} · Energy {formatPercent(set.energy)}</p>
+                        <p>{t('rec.saved.entryMeta', 'Mood {mood} · Energy {energy}', { mood: formatPercent(set.mood), energy: formatPercent(set.energy) })}</p>
                         <span>{new Date(set.createdAt).toLocaleString()}</span>
                       </div>
-                      <button type="button" className="mini-button" onClick={() => removeSavedSet(set.id)}>Remove</button>
+                      <button type="button" className="mini-button" onClick={() => removeSavedSet(set.id)}>{t('rec.saved.remove', 'Remove')}</button>
                     </div>
                   ))
                 )}
               </div>
             ) : (
-              <p className="muted">Login to view saved sets.</p>
+              <p className="muted">{t('rec.saved.login', 'Login to view saved sets.')}</p>
             )}
           </article>
 
           <article className="panel panel--accent">
             <div className="section-heading">
-              <p className="eyebrow">Catalog controls</p>
-              <h4>Like or block tracks to change the ranking.</h4>
+              <p className="eyebrow">{t('rec.catalog.eyebrow', 'Catalog controls')}</p>
+              <h4>{t('rec.catalog.title', 'Like or block tracks to change the ranking.')}</h4>
             </div>
             <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-              <button type="button" className="btn" onClick={resetControls}>Reset controls</button>
+              <button type="button" className="btn" onClick={resetControls}>{t('rec.catalog.reset', 'Reset controls')}</button>
             </div>
             <div className="catalog-grid">
               {spotifyTracks.map((track) => {
@@ -990,10 +992,10 @@ export function RecommendationStudio() {
                     </div>
                     <div className="catalog-actions">
                       <button type="button" className={`mini-button${isLiked ? ' active' : ''}`} onClick={() => toggleLike(track.id)}>
-                        {isLiked ? 'Liked' : 'Like'}
+                        {isLiked ? t('rec.liked', 'Liked') : t('rec.like', 'Like')}
                       </button>
                       <button type="button" className={`mini-button${isBlocked ? ' active' : ''}`} onClick={() => toggleBlock(track.id)}>
-                        {isBlocked ? 'Blocked' : 'Block'}
+                        {isBlocked ? t('rec.blocked', 'Blocked') : t('rec.block', 'Block')}
                       </button>
                       {track.previewUrl ? (
                         <button type="button" className={`mini-button${playingId === track.id ? ' active' : ''}`} onClick={() => playTrack(track)}>

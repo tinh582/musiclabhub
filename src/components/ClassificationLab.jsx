@@ -1,10 +1,13 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
-import { CATALOG } from '../data/catalog';
+import { useLocale } from '../i18n/LocaleProvider';
+import { CATALOG, buildCatalog } from '../data/catalog';
 import { useAudioFeatures } from '../hooks/useAudioFeatures';
 import { formatDuration } from '../utils/audioFeatures';
 
 export function ClassificationLab() {
-  const [selectedId, setSelectedId] = useState(CATALOG[0].id);
+  const { t } = useLocale();
+  const localizedCatalog = buildCatalog(t);
+  const [selectedId, setSelectedId] = useState(localizedCatalog[0].id);
   const [playing, setPlaying] = useState(false);
   const [trainProgress, setTrainProgress] = useState(0);
   const [probs, setProbs] = useState([]);
@@ -16,16 +19,16 @@ export function ClassificationLab() {
   const [loadingModel, setLoadingModel] = useState(false);
 
   const features = useMemo(
-    () => CATALOG.map((c) => [c.energy, c.valence, c.danceability, c.tempo / 140, c.popularity / 100, c.collaborative]),
+    () => (localizedCatalog || CATALOG).map((c) => [c.energy, c.valence, c.danceability, c.tempo / 140, c.popularity / 100, c.collaborative]),
     [],
   );
 
   const genres = useMemo(() => {
-    const set = Array.from(new Set(CATALOG.map((c) => c.genre)));
+    const set = Array.from(new Set((localizedCatalog || CATALOG).map((c) => c.genre)));
     return set;
-  }, []);
+  }, [localizedCatalog]);
 
-  const labels = useMemo(() => CATALOG.map((c) => genres.indexOf(c.genre)), [genres]);
+  const labels = useMemo(() => (localizedCatalog || CATALOG).map((c) => genres.indexOf(c.genre)), [genres, localizedCatalog]);
 
   useEffect(() => {
     let mounted = true;
@@ -105,8 +108,9 @@ export function ClassificationLab() {
     out.dispose();
   }
 
-  const selected = useMemo(() => CATALOG.find((t) => t.id === selectedId), [selectedId]);
+  const selected = useMemo(() => (localizedCatalog.find((t) => t.id === selectedId) || CATALOG.find((t) => t.id === selectedId)), [selectedId, localizedCatalog]);
   const { data: audioInfo, loading: audioLoading } = useAudioFeatures(selected?.audioUrl);
+  const { t } = useLocale();
 
   function playDemo(track) {
     const audio = audioRef.current;
@@ -131,15 +135,15 @@ export function ClassificationLab() {
       <div className="classification-grid">
         <article className="panel panel--filled">
           <div className="section-heading">
-            <p className="eyebrow">Classification Lab</p>
-            <h4>Genre prediction using a tiny TF.js classifier</h4>
+            <p className="eyebrow">{t('class.title', 'Classification Lab')}</p>
+            <h4>{t('class.subtitle', 'Genre prediction using a tiny TF.js classifier')}</h4>
           </div>
 
           <div style={{ marginTop: 12 }}>
             <label className="slider-card">
-              <span>Select track</span>
-              <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)} style={{ width: '100%', marginTop: 8 }}>
-                {CATALOG.map((t) => (
+              <span>{t('class.selectTrack', 'Select track')}</span>
+                <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)} style={{ width: '100%', marginTop: 8 }}>
+                {(localizedCatalog || CATALOG).map((t) => (
                   <option key={t.id} value={t.id}>{`${t.title} — ${t.artist}`}</option>
                 ))}
               </select>
@@ -147,15 +151,15 @@ export function ClassificationLab() {
 
             <div style={{ marginTop: 12 }}>
               <div className="mini-analytics" style={{ padding: 12 }}>
-                <p className="eyebrow">Model</p>
+                <p className="eyebrow">{t('class.model', 'Model')}</p>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                   <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <input type="checkbox" checked={usePretrained} onChange={(e) => setUsePretrained(e.target.checked)} />
-                    <span style={{ color: 'var(--muted)' }}>Use pretrained model</span>
+                    <span style={{ color: 'var(--muted)' }}>{t('class.usePretrained', 'Use pretrained model')}</span>
                   </label>
                   {usePretrained ? (
                     <>
-                      <input placeholder="Model URL (tfjs model.json)" value={modelUrl} onChange={(e) => setModelUrl(e.target.value)} style={{ flex: 1 }} />
+                      <input placeholder={t('class.modelUrl', 'Model URL (tfjs model.json)')} value={modelUrl} onChange={(e) => setModelUrl(e.target.value)} style={{ flex: 1 }} />
                       <button className="button button--primary" onClick={async () => {
                         if (!modelUrl) return;
                         setLoadingModel(true);
@@ -169,7 +173,7 @@ export function ClassificationLab() {
                         } finally {
                           setLoadingModel(false);
                         }
-                      }}>{loadingModel ? 'Loading...' : 'Load'}</button>
+                      }}>{loadingModel ? t('class.loading', 'Loading...') : t('class.load', 'Load')}</button>
                     </>
                   ) : (
                     <>
@@ -185,36 +189,36 @@ export function ClassificationLab() {
 
             <div className="profile-strip" style={{ marginTop: 12 }}>
               <article className="profile-card">
-                <p>Energy</p>
+                <p>{t('class.energy', 'Energy')}</p>
                 <strong>{Math.round(selected.energy * 100)}%</strong>
               </article>
               <article className="profile-card">
-                <p>Valence</p>
+                <p>{t('class.valence', 'Valence')}</p>
                 <strong>{Math.round(selected.valence * 100)}%</strong>
               </article>
               <article className="profile-card">
-                <p>Danceability</p>
+                <p>{t('class.danceability', 'Danceability')}</p>
                 <strong>{Math.round(selected.danceability * 100)}%</strong>
               </article>
             </div>
 
             <div style={{ marginTop: 12 }}>
               <audio ref={audioRef} onEnded={() => setPlaying(false)} />
-              <button className="button button--primary" onClick={() => playDemo(selected)}>{playing ? 'Stop' : 'Play demo'}</button>
+              <button className="button button--primary" onClick={() => playDemo(selected)}>{playing ? t('rec.stop', 'Stop') : t('class.playDemo', 'Play demo')}</button>
             </div>
 
             <div style={{ marginTop: 12 }}>
-              <p className="eyebrow">Sample info</p>
+              <p className="eyebrow">{t('class.sampleInfo', 'Sample info')}</p>
               <div style={{ display: 'grid', gap: 6 }}>
-                <span style={{ color: 'var(--muted)' }}>Duration: {audioLoading || !audioInfo ? 'Loading...' : formatDuration(audioInfo.duration)}</span>
-                <span style={{ color: 'var(--muted)' }}>Peak: {audioLoading || !audioInfo ? 'Loading...' : `${audioInfo.peakDb.toFixed(1)} dB`}</span>
-                <span style={{ color: 'var(--muted)' }}>RMS: {audioLoading || !audioInfo ? 'Loading...' : `${audioInfo.rmsDb.toFixed(1)} dB`}</span>
-                <span style={{ color: 'var(--muted)' }}>Tempo: {audioLoading || !audioInfo ? 'Loading...' : (audioInfo.tempo ? `${audioInfo.tempo} BPM` : 'n/a')}</span>
+                <span style={{ color: 'var(--muted)' }}>{t('class.duration', 'Duration')}: {audioLoading || !audioInfo ? t('class.loading', 'Loading...') : formatDuration(audioInfo.duration)}</span>
+                <span style={{ color: 'var(--muted)' }}>{t('class.peak', 'Peak')}: {audioLoading || !audioInfo ? t('class.loading', 'Loading...') : `${audioInfo.peakDb.toFixed(1)} dB`}</span>
+                <span style={{ color: 'var(--muted)' }}>{t('class.rms', 'RMS')}: {audioLoading || !audioInfo ? t('class.loading', 'Loading...') : `${audioInfo.rmsDb.toFixed(1)} dB`}</span>
+                <span style={{ color: 'var(--muted)' }}>{t('class.tempo', 'Tempo')}: {audioLoading || !audioInfo ? t('class.loading', 'Loading...') : (audioInfo.tempo ? `${audioInfo.tempo} BPM` : 'n/a')}</span>
               </div>
             </div>
 
             <div style={{ marginTop: 18 }}>
-              <p className="eyebrow">Predicted genres</p>
+              <p className="eyebrow">{t('class.predicted', 'Predicted genres')}</p>
               <div className="prob-list">
                 {probs.map((p) => (
                   <div key={p.genre} className="prob-item">
@@ -232,8 +236,8 @@ export function ClassificationLab() {
 
         <aside className="panel">
           <div className="section-heading">
-            <p className="eyebrow">Feature space</p>
-            <h4>Energy vs Valence scatter</h4>
+            <p className="eyebrow">{t('class.featureSpace', 'Feature space')}</p>
+            <h4>{t('class.scatter', 'Energy vs Valence scatter')}</h4>
           </div>
           <svg viewBox="0 0 300 240" style={{ width: '100%', marginTop: 12 }}>
             <rect x="0" y="0" width="300" height="240" fill="rgba(255,255,255,0.02)" rx="12" />

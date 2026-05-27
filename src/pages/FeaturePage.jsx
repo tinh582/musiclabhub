@@ -8,16 +8,19 @@ import { AnalyticsLab } from '../components/AnalyticsLab';
 import { EffectsLab } from '../components/EffectsLab';
 import { ComposerLab } from '../components/ComposerLab';
 import { InstrumentLab } from '../components/InstrumentLab';
-import { featurePages } from '../data/siteContent';
+import { useLocale } from '../i18n/LocaleProvider';
+import { useSiteContent } from '../hooks/useSiteContent';
 
-function getAccentLabel(accent) {
-  if (accent === 'gold') return 'Golden data story';
-  if (accent === 'coral') return 'Creative analysis';
-  if (accent === 'blue') return 'Experimental mode';
-  return 'Realtime workflow';
+function getAccentLabel(accent, t) {
+  if (accent === 'gold') return t('feature.accent.gold', 'Golden data story');
+  if (accent === 'coral') return t('feature.accent.coral', 'Creative analysis');
+  if (accent === 'blue') return t('feature.accent.blue', 'Experimental mode');
+  return t('feature.accent.teal', 'Realtime workflow');
 }
 
 export function FeaturePage() {
+  const { t } = useLocale();
+  const { featurePages } = useSiteContent();
   const { slug } = useParams();
   const page = featurePages.find((item) => item.slug === slug);
 
@@ -25,12 +28,12 @@ export function FeaturePage() {
     return (
       <section className="hero-card">
         <div className="hero-copy">
-          <p className="eyebrow">Missing page</p>
-          <h3>That module was not found.</h3>
-          <p>Return to the dashboard and choose one of the available music feature pages.</p>
+          <p className="eyebrow">{t('feature.missing.eyebrow', 'Missing page')}</p>
+          <h3>{t('feature.missing.title', 'That module was not found.')}</h3>
+          <p>{t('feature.missing.body', 'Return to the dashboard and choose one of the available music feature pages.')}</p>
           <div className="hero-actions">
             <Link className="button button--primary" to="/">
-              Back to dashboard
+              {t('feature.back', 'Back to dashboard')}
             </Link>
           </div>
         </div>
@@ -47,9 +50,9 @@ export function FeaturePage() {
           <p>{page.summary}</p>
           <div className="hero-actions">
             <Link className="button button--primary" to="/">
-              Back to dashboard
+              {t('feature.back', 'Back to dashboard')}
             </Link>
-            <span className="hero-note">{getAccentLabel(page.accent)}</span>
+            <span className="hero-note">{getAccentLabel(page.accent, t)}</span>
           </div>
         </div>
         <div className="metric-strip">
@@ -90,8 +93,8 @@ export function FeaturePage() {
       <section className="content-grid content-grid--two">
         <article className="panel">
           <div className="section-heading">
-            <p className="eyebrow">Suggested stack</p>
-            <h4>Use these building blocks as the technical base for the module.</h4>
+            <p className="eyebrow">{t('feature.stack.eyebrow', 'Suggested stack')}</p>
+            <h4>{t('feature.stack.title', 'Use these building blocks as the technical base for the module.')}</h4>
           </div>
           <div className="tag-row">
             {page.stack.map((item) => (
@@ -104,8 +107,8 @@ export function FeaturePage() {
 
         <article className="panel panel--accent">
           <div className="section-heading">
-            <p className="eyebrow">Evaluation focus</p>
-            <h4>Keep the demo measurable and thesis-friendly.</h4>
+            <p className="eyebrow">{t('feature.evaluation.eyebrow', 'Evaluation focus')}</p>
+            <h4>{t('feature.evaluation.title', 'Keep the demo measurable and thesis-friendly.')}</h4>
           </div>
           <p className="evaluation-copy">{page.evaluation}</p>
         </article>

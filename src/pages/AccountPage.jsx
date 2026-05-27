@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useOutletContext } from 'react-router-dom';
+import { useLocale } from '../i18n/LocaleProvider';
 
 const STORAGE_KEYS = {
   saved: 'mlh_saved_recommendations',
@@ -33,6 +34,7 @@ function getSpotifyToken() {
 }
 
 export function AccountPage() {
+  const { t } = useLocale();
   const { currentUser, logoutUser } = useOutletContext();
   const [savedSets, setSavedSets] = useState([]);
   const [recState, setRecState] = useState(null);
@@ -73,12 +75,12 @@ export function AccountPage() {
       <section className="account-page">
         <article className="panel auth-page-panel">
           <div className="section-heading">
-            <p className="eyebrow">Account</p>
-            <h4>Login required</h4>
+            <p className="eyebrow">{t('login.account', 'Account')}</p>
+            <h4>{t('account.loginRequired', 'Login required')}</h4>
           </div>
-          <p className="muted">Sign in to view your saved recommendations and preferences.</p>
+          <p className="muted">{t('account.signInToView', 'Sign in to view your saved recommendations and preferences.')}</p>
           <div className="auth-actions">
-            <NavLink to="/login" className="btn">Go to login</NavLink>
+            <NavLink to="/login" className="btn">{t('account.goLogin', 'Go to login')}</NavLink>
           </div>
         </article>
       </section>
@@ -90,82 +92,84 @@ export function AccountPage() {
       <div className="account-grid">
         <article className="panel account-card">
           <div className="section-heading">
-            <p className="eyebrow">Profile</p>
-            <h4>Your account</h4>
+            <p className="eyebrow">{t('account.profile', 'Profile')}</p>
+            <h4>{t('account.yourAccount', 'Your account')}</h4>
           </div>
-          <p className="muted">Signed in as <strong>{currentUser}</strong>.</p>
+          <p className="muted">{t('account.signedInAs', 'Signed in as')} <strong>{currentUser}</strong>.</p>
           <div className="auth-actions">
-            <button type="button" className="btn" onClick={() => logoutUser()}>Logout</button>
+            <button type="button" className="btn" onClick={() => logoutUser()}>{t('login.logout', 'Logout')}</button>
           </div>
         </article>
 
         <article className="panel account-card">
           <div className="section-heading">
-            <p className="eyebrow">Spotify</p>
-            <h4>Connection status</h4>
+            <p className="eyebrow">{t('account.spotify', 'Spotify')}</p>
+            <h4>{t('account.connectionStatus', 'Connection status')}</h4>
           </div>
           <p className="muted">
-            {spotifyToken ? 'Spotify is connected for audio features.' : 'Connect Spotify to unlock full audio features.'}
+            {spotifyToken
+              ? t('account.spotify.connected', 'Spotify is connected for audio features.')
+              : t('account.spotify.disconnected', 'Connect Spotify to unlock full audio features.')}
           </p>
           <div className="auth-actions">
             {spotifyToken ? (
-              <button type="button" className="btn" onClick={handleDisconnectSpotify}>Disconnect Spotify</button>
+              <button type="button" className="btn" onClick={handleDisconnectSpotify}>{t('account.spotify.disconnect', 'Disconnect Spotify')}</button>
             ) : (
-              <button type="button" className="btn" onClick={handleConnectSpotify}>Connect Spotify</button>
+              <button type="button" className="btn" onClick={handleConnectSpotify}>{t('account.spotify.connect', 'Connect Spotify')}</button>
             )}
           </div>
         </article>
 
         <article className="panel account-card">
           <div className="section-heading">
-            <p className="eyebrow">Recommendation state</p>
-            <h4>Last saved settings</h4>
+            <p className="eyebrow">{t('account.recState', 'Recommendation state')}</p>
+            <h4>{t('account.lastSaved', 'Last saved settings')}</h4>
           </div>
           {recState ? (
             <div className="account-list">
               <div className="account-row">
-                <span>Mode</span>
+                <span>{t('account.mode', 'Mode')}</span>
                 <strong>{recState.mode?.toUpperCase() || 'Hybrid'}</strong>
               </div>
               <div className="account-row">
-                <span>Mood</span>
+                <span>{t('account.mood', 'Mood')}</span>
                 <strong>{formatPercent(recState.mood ?? 0)}</strong>
               </div>
               <div className="account-row">
-                <span>Energy</span>
+                <span>{t('account.energy', 'Energy')}</span>
                 <strong>{formatPercent(recState.energy ?? 0)}</strong>
               </div>
               <div className="account-row">
-                <span>Liked tracks</span>
+                <span>{t('account.liked', 'Liked tracks')}</span>
                 <strong>{recState.likedIds?.length || 0}</strong>
               </div>
               <div className="account-row">
-                <span>Blocked tracks</span>
+                <span>{t('account.blocked', 'Blocked tracks')}</span>
                 <strong>{recState.blockedIds?.length || 0}</strong>
               </div>
             </div>
           ) : (
-            <p className="muted">No saved recommendation state yet.</p>
+            <p className="muted">{t('account.noSavedState', 'No saved recommendation state yet.')}</p>
           )}
         </article>
 
         <article className="panel account-card account-card--wide">
           <div className="section-heading">
-            <p className="eyebrow">Saved lists</p>
-            <h4>Your recommendation history</h4>
+            <p className="eyebrow">{t('account.savedLists', 'Saved lists')}</p>
+            <h4>{t('account.history', 'Your recommendation history')}</h4>
           </div>
           {savedSets.length === 0 ? (
-            <p className="muted">No saved lists yet.</p>
+            <p className="muted">{t('account.noSavedLists', 'No saved lists yet.')}</p>
           ) : (
             <div className="account-history">
               {savedSets.map((set) => (
                 <div key={set.id} className="saved-card">
                   <div>
                     <strong>{set.seed} · {set.mode?.toUpperCase()}</strong>
-                    <p>Mood {formatPercent(set.mood)} · Energy {formatPercent(set.energy)}</p>
+                    <p>{t('account.mood', 'Mood')} {formatPercent(set.mood)} · {t('account.energy', 'Energy')} {formatPercent(set.energy)}</p>
                     <span>{new Date(set.createdAt).toLocaleString()}</span>
                   </div>
-                  <span className="account-pill">{set.trackIds?.length || 0} tracks</span>
+                  <span className="account-pill">{set.trackIds?.length || 0} {t('account.tracks', 'tracks')}</span>
                 </div>
               ))}
             </div>

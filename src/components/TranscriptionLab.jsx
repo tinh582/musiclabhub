@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect } from 'react';
+import { useLocale } from '../i18n/LocaleProvider';
 
 function autoCorrelate(buffer, sampleRate) {
   const size = buffer.length;
@@ -92,6 +93,8 @@ export function TranscriptionLab() {
       }
     };
   }, []);
+
+  const { t } = useLocale();
 
   async function processArrayBuffer(arrayBuffer) {
     if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
@@ -509,26 +512,26 @@ export function TranscriptionLab() {
       <div className="transcription-grid">
         <article className="transcription-main panel panel--filled">
           <div className="section-heading">
-            <p className="eyebrow">Transcription Lab</p>
-            <h4>Upload a monophonic clip to extract onsets and notes</h4>
+            <p className="eyebrow">{t('transcription.title', 'Transcription Lab')}</p>
+            <h4>{t('transcription.subtitle', 'Upload a monophonic clip to extract onsets and notes')}</h4>
           </div>
 
           <div style={{ marginTop: 12 }}>
             <input ref={fileRef} type="file" accept="audio/*" onChange={handleFile} />
             <select onChange={(e) => loadSampleByValue(e.target.value)} defaultValue="" style={{ marginLeft: 8 }}>
-              <option value="">Select sample</option>
+              <option value="">{t('transcription.selectSample', 'Select sample')}</option>
               {sampleTracks.map((t) => (
                 <option key={t.url} value={t.url}>{t.label}</option>
               ))}
             </select>
             <div style={{ marginTop: 10 }}>
-              <button className="button button--primary" type="button" onClick={playBuffer} disabled={loading || playing}>Play</button>
-              <button className="button button--ghost" type="button" onClick={stopPlayback} disabled={!playing}>Stop</button>
-              <button className="button button--ghost" type="button" onClick={exportMusicXML} disabled={notes.length === 0}>Export MusicXML</button>
+              <button className="button button--primary" type="button" onClick={playBuffer} disabled={loading || playing}>{t('transcription.play', 'Play')}</button>
+              <button className="button button--ghost" type="button" onClick={stopPlayback} disabled={!playing}>{t('transcription.stop', 'Stop')}</button>
+              <button className="button button--ghost" type="button" onClick={exportMusicXML} disabled={notes.length === 0}>{t('transcription.exportXml', 'Export MusicXML')}</button>
               <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <label style={{ color: 'var(--muted)' }}>Tempo</label>
+                <label style={{ color: 'var(--muted)' }}>{t('transcription.tempo', 'Tempo')}</label>
                 <input type="number" value={tempo} onChange={(e) => setTempo(Number(e.target.value))} style={{ width: 84 }} />
-                <label style={{ color: 'var(--muted)' }}>Resolution</label>
+                <label style={{ color: 'var(--muted)' }}>{t('transcription.resolution', 'Resolution')}</label>
                 <select value={resolution} onChange={(e) => setResolution(Number(e.target.value))}>
                   <option value={4}>Quarter</option>
                   <option value={8}>Eighth</option>
@@ -536,14 +539,14 @@ export function TranscriptionLab() {
                   <option value={32}>32nd</option>
                 </select>
                 <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input type="checkbox" checked={triplet} onChange={(e) => setTriplet(e.target.checked)} /> Triplet
+                  <input type="checkbox" checked={triplet} onChange={(e) => setTriplet(e.target.checked)} /> {t('transcription.triplet', 'Triplet')}
                 </label>
                 <label style={{ color: 'var(--muted)' }}>Swing</label>
                 <input type="range" min="0" max="0.5" step="0.01" value={swing} onChange={(e) => setSwing(Number(e.target.value))} />
                 <strong>{Math.round(swing * 100)}%</strong>
-                <button className="button button--primary" type="button" onClick={playQuantized} disabled={notes.length === 0}>Play quantized</button>
-                <button className="button button--ghost" type="button" onClick={exportQuantizedMusicXML} disabled={notes.length === 0}>Export quantized XML</button>
-                <button className="button button--ghost" type="button" onClick={exportQuantizedMIDI} disabled={notes.length === 0}>Export MIDI</button>
+                <button className="button button--primary" type="button" onClick={playQuantized} disabled={notes.length === 0}>{t('transcription.playQuantized', 'Play quantized')}</button>
+                <button className="button button--ghost" type="button" onClick={exportQuantizedMusicXML} disabled={notes.length === 0}>{t('transcription.exportQuantizedXml', 'Export quantized XML')}</button>
+                <button className="button button--ghost" type="button" onClick={exportQuantizedMIDI} disabled={notes.length === 0}>{t('transcription.exportMidi', 'Export MIDI')}</button>
               </div>
             </div>
           </div>
@@ -551,9 +554,9 @@ export function TranscriptionLab() {
           <canvas ref={canvasRef} className="wave-canvas" style={{ marginTop: 16, width: '100%' }} />
 
           <div style={{ marginTop: 12 }}>
-            <p className="eyebrow">Detected events</p>
+            <p className="eyebrow">{t('transcription.detected', 'Detected events')}</p>
             <div className="detected-list">
-              {notes.length === 0 ? <p className="practice-note">No events detected yet. Upload a short monophonic clip.</p> : null}
+              {notes.length === 0 ? <p className="practice-note">{t('transcription.detectedEmpty', 'No events detected yet. Upload a short monophonic clip.')}</p> : null}
               <canvas ref={pianoRef} className="wave-canvas" style={{ width: '100%', marginTop: 8 }} />
               {notes.map((n, i) => (
                 <div key={`${n.time}-${i}`} className="detected-item">
@@ -564,7 +567,7 @@ export function TranscriptionLab() {
               ))}
               {xmlPreview ? (
                 <div style={{ marginTop: 12 }}>
-                  <p className="eyebrow">MusicXML preview</p>
+                  <p className="eyebrow">{t('transcription.preview', 'MusicXML preview')}</p>
                   <textarea readOnly value={xmlPreview} style={{ width: '100%', height: 160 }} />
                 </div>
               ) : null}

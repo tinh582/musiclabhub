@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocale } from '../i18n/LocaleProvider';
 
 const TARGET_NOTES = [
   { name: 'A3', frequency: 220 },
@@ -106,12 +107,14 @@ export function PracticeRoom() {
 
   const targetNote = TARGET_NOTES[targetIndex];
 
+  const { t } = useLocale();
+
   const targetHint = useMemo(() => {
-    if (score >= 90) return 'Excellent control';
-    if (score >= 70) return 'Good stability';
-    if (score >= 40) return 'Keep adjusting';
-    return 'No stable pitch yet';
-  }, [score]);
+    if (score >= 90) return t('practice.hint.excellent', 'Excellent control');
+    if (score >= 70) return t('practice.hint.good', 'Good stability');
+    if (score >= 40) return t('practice.hint.adjust', 'Keep adjusting');
+    return t('practice.hint.noPitch', 'No stable pitch yet');
+  }, [score, t]);
 
   useEffect(() => {
     return () => {
@@ -298,22 +301,22 @@ export function PracticeRoom() {
         <article className="practice-stage">
           <div className="practice-stage__header">
             <div>
-              <p className="eyebrow">Live feedback</p>
-              <h4>Pitch and timing practice</h4>
+              <p className="eyebrow">{t('practice.liveFeedback', 'Live feedback')}</p>
+              <h4>{t('practice.title', 'Pitch and timing practice')}</h4>
             </div>
             <span className={`status-pill status-pill--${status === 'Listening' || status === 'Demo running' ? 'live' : 'idle'}`}>
-              {status}
+              {status === 'Listening' ? t('practice.status.listening', 'Listening') : status === 'Demo running' ? t('practice.status.demo', 'Demo running') : t('practice.status.idle', 'Idle')}
             </span>
           </div>
 
           <div className="practice-meter">
             <div className="practice-meter__target">
-              <span>Target</span>
+              <span>{t('practice.target', 'Target')}</span>
               <strong>{targetNote.name}</strong>
               <small>{targetNote.frequency.toFixed(2)} Hz</small>
             </div>
             <div className="practice-meter__live">
-              <span>Detected</span>
+              <span>{t('practice.detected', 'Detected')}</span>
               <strong>{detectedNote}</strong>
               <small>{formatFrequency(detectedFrequency)}</small>
             </div>
@@ -329,18 +332,18 @@ export function PracticeRoom() {
               <div className="practice-gauge__center" />
               <div className="practice-gauge__needle" style={{ left: `calc(50% + ${Math.max(-50, Math.min(50, cents))}%)` }} />
             </div>
-            <p className="practice-gauge__label">Cents offset: {cents >= 0 ? `+${cents}` : cents}</p>
+            <p className="practice-gauge__label">{t('practice.centsOffset', 'Cents offset')}: {cents >= 0 ? `+${cents}` : cents}</p>
           </div>
 
           <div className="practice-actions">
             <button type="button" className="button button--primary" onClick={startMicrophoneSession}>
-              Start microphone
+              {t('practice.startMic', 'Start microphone')}
             </button>
             <button type="button" className="button button--ghost" onClick={startDemoSession}>
-              Start demo tone
+              {t('practice.startDemo', 'Start demo tone')}
             </button>
             <button type="button" className="button button--ghost" onClick={stopSession}>
-              Stop
+              {t('practice.stop', 'Stop')}
             </button>
           </div>
 
@@ -349,13 +352,13 @@ export function PracticeRoom() {
 
         <aside className="practice-sidebar">
           <article className="practice-card">
-            <p className="eyebrow">Session score</p>
+            <p className="eyebrow">{t('practice.score', 'Session score')}</p>
             <strong>{score}</strong>
             <p>{targetHint}</p>
           </article>
 
           <article className="practice-card">
-            <p className="eyebrow">Target selection</p>
+            <p className="eyebrow">{t('practice.targetSelection', 'Target selection')}</p>
             <div className="target-grid">
               {TARGET_NOTES.map((note, index) => (
                 <button
@@ -371,22 +374,22 @@ export function PracticeRoom() {
           </article>
 
           <article className="practice-card">
-            <p className="eyebrow">Practice mode</p>
+            <p className="eyebrow">{t('practice.mode', 'Practice mode')}</p>
             <div className="target-grid">
               <button type="button" className={`target-chip${mode === 'mic' ? ' active' : ''}`} onClick={() => setMode('mic')}>
-                Microphone
+                {t('practice.mode.mic', 'Microphone')}
               </button>
               <button type="button" className={`target-chip${mode === 'demo' ? ' active' : ''}`} onClick={() => setMode('demo')}>
-                Demo tone
+                {t('practice.mode.demo', 'Demo tone')}
               </button>
             </div>
           </article>
 
           <article className="practice-card practice-card--log">
-            <p className="eyebrow">Recent readings</p>
+            <p className="eyebrow">{t('practice.recent', 'Recent readings')}</p>
             <div className="practice-log">
               {sessionLog.length === 0 ? (
-                <p className="practice-note">Start a session to collect pitch readings.</p>
+                <p className="practice-note">{t('practice.recent.empty', 'Start a session to collect pitch readings.')}</p>
               ) : (
                 sessionLog.map((entry, index) => (
                   <div key={`${entry.note}-${index}`} className="practice-log__item">

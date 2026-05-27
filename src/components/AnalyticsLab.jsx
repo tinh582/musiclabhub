@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
-import { CATALOG } from '../data/catalog';
+import { useLocale } from '../i18n/LocaleProvider';
+import { CATALOG, buildCatalog } from '../data/catalog';
 
 function groupByGenre(catalog) {
   const map = {};
@@ -37,7 +38,8 @@ function parseCSV(text) {
 }
 
 export function AnalyticsLab() {
-  const [dataset, setDataset] = useState(CATALOG.slice());
+  const { t } = useLocale();
+  const [dataset, setDataset] = useState(() => buildCatalog(t || ((k, f) => f)));
   const [selectedGenres, setSelectedGenres] = useState(null);
   const [tempoRange, setTempoRange] = useState([40, 200]);
 
@@ -96,6 +98,8 @@ export function AnalyticsLab() {
   }, [filtered]);
 
   const scatterPoints = useMemo(() => filtered.map((t) => ({ x: Number(t.energy || 0), y: Number(t.valence || 0), genre: t.genre, title: `${t.title || ''} — ${t.artist || ''}` })), [filtered]);
+
+  const { t } = useLocale();
 
   function handleFile(e) {
     const f = e.target.files && e.target.files[0];
@@ -162,14 +166,14 @@ export function AnalyticsLab() {
     <section className="analytics-lab">
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          <p className="eyebrow">Music Analytics</p>
-          <h4>Upload datasets, filter and export visuals</h4>
+          <p className="eyebrow">{t('analytics.title', 'Music Analytics')}</p>
+          <h4>{t('analytics.subtitle', 'Upload datasets, filter and export visuals')}</h4>
         </div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <input type="file" accept=".csv,text/csv" onChange={handleFile} />
-          <button className="btn" onClick={() => { if (tempoRef.current) downloadSVG(tempoRef.current, 'tempo.svg'); }}>Export Tempo SVG</button>
-          <button className="btn" onClick={() => { if (tempoRef.current) downloadPNG(tempoRef.current, 'tempo.png'); }}>Export Tempo PNG</button>
+          <button className="btn" onClick={() => { if (tempoRef.current) downloadSVG(tempoRef.current, 'tempo.svg'); }}>{t('analytics.export.tempoSvg', 'Export Tempo SVG')}</button>
+          <button className="btn" onClick={() => { if (tempoRef.current) downloadPNG(tempoRef.current, 'tempo.png'); }}>{t('analytics.export.tempoPng', 'Export Tempo PNG')}</button>
         </div>
       </div>
 
@@ -179,7 +183,7 @@ export function AnalyticsLab() {
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                 <div style={{ flex: 1 }}>
-                  <p className="eyebrow">Tempo range</p>
+                  <p className="eyebrow">{t('analytics.tempoRange', 'Tempo range')}</p>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <input type="range" min={20} max={240} value={tempoRange[0]} onChange={(e) => setTempoRange([Number(e.target.value), tempoRange[1]])} />
                     <input type="range" min={20} max={240} value={tempoRange[1]} onChange={(e) => setTempoRange([tempoRange[0], Number(e.target.value)])} />
@@ -188,7 +192,7 @@ export function AnalyticsLab() {
                 </div>
 
                 <div style={{ width: 220 }}>
-                  <p className="eyebrow">Genres</p>
+                  <p className="eyebrow">{t('analytics.genres', 'Genres')}</p>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {allGenres.map((g) => (
                       <button key={g} className={`chip ${selectedGenres && selectedGenres.includes(g) ? 'chip--active' : ''}`} onClick={() => toggleGenre(g)} style={{ borderColor: colorMap[g] }}>
@@ -200,7 +204,7 @@ export function AnalyticsLab() {
               </div>
 
               <div style={{ marginTop: 12 }}>
-                <p className="eyebrow">Tempo distribution</p>
+                <p className="eyebrow">{t('analytics.tempoDistribution', 'Tempo distribution')}</p>
                 <svg ref={tempoRef} id="tempoSvg" viewBox="0 0 720 180" style={{ width: '100%', marginTop: 8 }}>
                   {tempoBins.map((b, i) => {
                     const w = 720 / tempoBins.length;
@@ -216,7 +220,7 @@ export function AnalyticsLab() {
                 </svg>
 
                 <div style={{ marginTop: 18 }}>
-                  <p className="eyebrow">Energy vs Valence</p>
+                  <p className="eyebrow">{t('analytics.energyValence', 'Energy vs Valence')}</p>
                   <svg ref={scatterRef} id="scatterSvg" viewBox="0 0 720 320" style={{ width: '100%', marginTop: 8 }}>
                     <rect x="0" y="0" width="720" height="320" fill="rgba(255,255,255,0.02)" rx="12" />
                     {scatterPoints.map((p, i) => {
@@ -239,14 +243,14 @@ export function AnalyticsLab() {
 
         <aside className="panel">
           <div className="section-heading">
-            <p className="eyebrow">By genre</p>
-            <h4>Average features</h4>
+            <p className="eyebrow">{t('analytics.byGenre', 'By genre')}</p>
+            <h4>{t('analytics.avgFeatures', 'Average features')}</h4>
           </div>
 
           <div style={{ marginTop: 12 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <strong>Legend</strong>
+                <strong>{t('analytics.legend', 'Legend')}</strong>
                 {allGenres.map((g) => (
                   <div key={g} style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 120 }}>
                     <div style={{ width: 12, height: 12, background: colorMap[g], borderRadius: 3 }} />
@@ -267,7 +271,7 @@ export function AnalyticsLab() {
 
                   <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <div style={{ width: 76 }}>{'Energy'}</div>
+                      <div style={{ width: 76 }}>{t('analytics.energy', 'Energy')}</div>
                       <div style={{ flex: 1, height: 8, background: 'rgba(255,255,255,0.03)', borderRadius: 999 }}>
                         <div style={{ width: `${Math.round(g.energy * 100)}%`, height: '100%', background: 'linear-gradient(90deg,var(--teal),var(--blue))' }} />
                       </div>
@@ -275,7 +279,7 @@ export function AnalyticsLab() {
                     </div>
 
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <div style={{ width: 76 }}>{'Valence'}</div>
+                      <div style={{ width: 76 }}>{t('analytics.valence', 'Valence')}</div>
                       <div style={{ flex: 1, height: 8, background: 'rgba(255,255,255,0.03)', borderRadius: 999 }}>
                         <div style={{ width: `${Math.round(g.valence * 100)}%`, height: '100%', background: 'linear-gradient(90deg,var(--gold),var(--coral))' }} />
                       </div>

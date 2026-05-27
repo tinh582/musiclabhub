@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { CATALOG } from '../data/catalog';
+import { CATALOG, buildCatalog } from '../data/catalog';
+import { useLocale } from '../i18n/LocaleProvider';
 
 export function EffectsLab() {
-  const [fileUrl, setFileUrl] = useState('/audio/sample1.mp3');
+  const { t } = useLocale();
+  const localizedCatalog = buildCatalog(t);
+  const [fileUrl, setFileUrl] = useState((localizedCatalog && localizedCatalog[0] && localizedCatalog[0].audioUrl) || '/audio/sample1.mp3');
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [wet, setWet] = useState(0.5);
@@ -111,7 +114,7 @@ export function EffectsLab() {
   }
 
   function pickCatalog(i) {
-    const t = CATALOG[i];
+    const t = (localizedCatalog && localizedCatalog[i]) || CATALOG[i];
     if (t && t.audioUrl) {
       setFileUrl(t.audioUrl);
       if (audioRef.current) {

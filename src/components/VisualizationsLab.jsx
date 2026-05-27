@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useLocale } from '../i18n/LocaleProvider';
 
 function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v));
@@ -71,6 +72,8 @@ export function VisualizationsLab() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const { t } = useLocale();
 
   function ensureAudioGraph() {
     const audio = audioRef.current;
@@ -304,14 +307,14 @@ export function VisualizationsLab() {
       <div className="visualizations-grid">
         <article className="panel panel--filled">
           <div className="section-heading">
-            <p className="eyebrow">Visualizations Lab</p>
-            <h4>Analyze one selected/uploaded song with live audio visual outputs.</h4>
+            <p className="eyebrow">{t('viz.title', 'Visualizations Lab')}</p>
+            <h4>{t('viz.subtitle', 'Analyze one selected/uploaded song with live audio visual outputs.')}</h4>
           </div>
 
           <div className="viz-controls">
             <input type="file" accept="audio/*" onChange={handleFileUpload} />
             <select onChange={(e) => loadSampleByValue(e.target.value)} defaultValue="">
-              <option value="">Select sample</option>
+              <option value="">{t('viz.selectSample', 'Select sample')}</option>
               {sampleTracks.map((t) => (
                 <option key={t.url} value={t.url}>{t.label}</option>
               ))}
@@ -319,21 +322,21 @@ export function VisualizationsLab() {
             <div className="viz-url-row">
               <input
                 type="text"
-                placeholder="Or paste an audio URL"
+                placeholder={t('viz.urlPlaceholder', 'Or paste an audio URL')}
                 value={audioUrlInput}
                 onChange={(e) => setAudioUrlInput(e.target.value)}
               />
-              <button type="button" className="button button--ghost" onClick={loadRemoteUrl}>Load URL</button>
+              <button type="button" className="button button--ghost" onClick={loadRemoteUrl}>{t('viz.loadUrl', 'Load URL')}</button>
             </div>
             <audio ref={audioRef} onEnded={handleEnded} controls style={{ width: '100%' }} />
             <div className="viz-actions">
               <button type="button" className="button button--primary" onClick={startPlayback}>
-                {playing ? 'Resume' : 'Play'}
+                {playing ? t('viz.resume', 'Resume') : t('viz.play', 'Play')}
               </button>
-              <button type="button" className="button button--ghost" onClick={pausePlayback}>Pause</button>
-              <button type="button" className="button button--ghost" onClick={stopPlayback}>Stop</button>
+              <button type="button" className="button button--ghost" onClick={pausePlayback}>{t('viz.pause', 'Pause')}</button>
+              <button type="button" className="button button--ghost" onClick={stopPlayback}>{t('viz.stop', 'Stop')}</button>
             </div>
-            <p className="practice-note">Loaded: {loadedLabel}</p>
+            <p className="practice-note">{t('viz.loaded', 'Loaded')}: {loadedLabel}</p>
           </div>
 
           <div className="viz-center" aria-hidden="true">
@@ -348,47 +351,47 @@ export function VisualizationsLab() {
 
           <div className="viz-panel-grid">
             <article className="viz-card">
-              <p className="eyebrow">Oscilloscope</p>
+              <p className="eyebrow">{t('viz.oscilloscope', 'Oscilloscope')}</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ color: 'var(--muted)' }}>Zoom</span>
+                <span style={{ color: 'var(--muted)' }}>{t('viz.zoom', 'Zoom')}</span>
                 <input type="range" min="0.2" max="0.48" step="0.01" value={oscZoom} onChange={(e) => setOscZoom(Number(e.target.value))} />
                 <strong>{oscZoom.toFixed(2)}</strong>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ color: 'var(--muted)' }}>Line</span>
+                <span style={{ color: 'var(--muted)' }}>{t('viz.line', 'Line')}</span>
                 <input type="range" min="1" max="4" step="0.5" value={oscLineWidth} onChange={(e) => setOscLineWidth(Number(e.target.value))} />
                 <strong>{oscLineWidth.toFixed(1)}</strong>
               </div>
               <canvas ref={oscRef} className="viz-canvas" />
             </article>
             <article className="viz-card">
-              <p className="eyebrow">Spectrum</p>
+              <p className="eyebrow">{t('viz.spectrum', 'Spectrum')}</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ color: 'var(--muted)' }}>Bars</span>
+                <span style={{ color: 'var(--muted)' }}>{t('viz.bars', 'Bars')}</span>
                 <input type="range" min="24" max="180" step="2" value={spectrumBars} onChange={(e) => setSpectrumBars(Number(e.target.value))} />
                 <strong>{spectrumBars}</strong>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ color: 'var(--muted)' }}>Floor</span>
+                <span style={{ color: 'var(--muted)' }}>{t('viz.floor', 'Floor')}</span>
                 <input type="range" min="0" max="0.35" step="0.01" value={spectrumFloor} onChange={(e) => setSpectrumFloor(Number(e.target.value))} />
                 <strong>{spectrumFloor.toFixed(2)}</strong>
               </div>
               <canvas ref={spectrumRef} className="viz-canvas" />
             </article>
             <article className="viz-card">
-              <p className="eyebrow">Spectrogram</p>
+              <p className="eyebrow">{t('viz.spectrogram', 'Spectrogram')}</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ color: 'var(--muted)' }}>Speed</span>
+                <span style={{ color: 'var(--muted)' }}>{t('viz.speed', 'Speed')}</span>
                 <input type="range" min="1" max="4" step="1" value={spectroSpeed} onChange={(e) => setSpectroSpeed(Number(e.target.value))} />
                 <strong>{spectroSpeed}</strong>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ color: 'var(--muted)' }}>Decay</span>
+                <span style={{ color: 'var(--muted)' }}>{t('viz.decay', 'Decay')}</span>
                 <input type="range" min="0.005" max="0.12" step="0.005" value={spectroDecay} onChange={(e) => setSpectroDecay(Number(e.target.value))} />
                 <strong>{spectroDecay.toFixed(3)}</strong>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ color: 'var(--muted)' }}>Contrast</span>
+                <span style={{ color: 'var(--muted)' }}>{t('viz.contrast', 'Contrast')}</span>
                 <input type="range" min="0.6" max="2.2" step="0.05" value={spectroContrast} onChange={(e) => setSpectroContrast(Number(e.target.value))} />
                 <strong>{spectroContrast.toFixed(2)}</strong>
               </div>
@@ -399,15 +402,15 @@ export function VisualizationsLab() {
 
         <aside className="panel">
           <div className="section-heading">
-            <p className="eyebrow">Meters</p>
-            <h4>Realtime level feedback</h4>
+            <p className="eyebrow">{t('viz.meters', 'Meters')}</p>
+            <h4>{t('viz.meter.subtitle', 'Realtime level feedback')}</h4>
           </div>
 
           <div className="meter-block" style={{ marginTop: 14 }}>
             <p className="eyebrow">Analyzer controls</p>
             <div style={{ display: 'grid', gap: 8 }}>
               <label style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 8, alignItems: 'center' }}>
-                <span style={{ color: 'var(--muted)' }}>FFT</span>
+                <span style={{ color: 'var(--muted)' }}>{t('viz.fft', 'FFT')}</span>
                 <input
                   type="range"
                   min="9"
@@ -419,17 +422,17 @@ export function VisualizationsLab() {
                 <strong>{fftSize}</strong>
               </label>
               <label style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 8, alignItems: 'center' }}>
-                <span style={{ color: 'var(--muted)' }}>Smooth</span>
+                <span style={{ color: 'var(--muted)' }}>{t('viz.smooth', 'Smooth')}</span>
                 <input type="range" min="0" max="0.98" step="0.01" value={smoothing} onChange={(e) => setSmoothing(Number(e.target.value))} />
                 <strong>{smoothing.toFixed(2)}</strong>
               </label>
               <label style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 8, alignItems: 'center' }}>
-                <span style={{ color: 'var(--muted)' }}>Min dB</span>
+                <span style={{ color: 'var(--muted)' }}>{t('viz.minDb', 'Min dB')}</span>
                 <input type="range" min="-120" max="-40" step="1" value={minDb} onChange={(e) => setMinDb(Number(e.target.value))} />
                 <strong>{minDb}</strong>
               </label>
               <label style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 8, alignItems: 'center' }}>
-                <span style={{ color: 'var(--muted)' }}>Max dB</span>
+                <span style={{ color: 'var(--muted)' }}>{t('viz.maxDb', 'Max dB')}</span>
                 <input type="range" min="-60" max="0" step="1" value={maxDb} onChange={(e) => setMaxDb(Number(e.target.value))} />
                 <strong>{maxDb}</strong>
               </label>
@@ -453,7 +456,7 @@ export function VisualizationsLab() {
           </div>
 
           <p className="practice-note" style={{ marginTop: 16 }}>
-            Tip: Use clean songs with clear dynamics for better meter and spectrogram detail.
+            {t('viz.tip', 'Tip: Use clean songs with clear dynamics for better meter and spectrogram detail.')}
           </p>
         </aside>
       </div>

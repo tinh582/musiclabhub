@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useLocale } from '../i18n/LocaleProvider';
 
 function midiToFreq(midi) {
   return 440 * (2 ** ((midi - 69) / 12));
@@ -275,20 +276,21 @@ export function ComposerLab() {
     a.click();
     URL.revokeObjectURL(url);
   }
+  const { t } = useLocale();
 
   return (
     <section className="composer-lab">
       <div className="composer-grid">
         <article className="panel panel--filled">
           <div className="section-heading">
-            <p className="eyebrow">Generative Composer</p>
-            <h4>Create melodies by setting a seed note, style, and generation parameters.</h4>
+            <p className="eyebrow">{t('composer.title', 'Generative Composer')}</p>
+            <h4>{t('composer.subtitle', 'Create melodies by setting a seed note, style, and generation parameters.')}</h4>
           </div>
 
           <div className="composer-controls">
             <div className="composer-control-row">
               <label className="slider-card">
-                <span>Seed note</span>
+                <span>{t('composer.seedNote', 'Seed note')}</span>
                 <select value={seedNote} onChange={(e) => setSeedNote(e.target.value)}>
                   {['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'].map((n) => (
                     <option key={n} value={n}>
@@ -298,7 +300,7 @@ export function ComposerLab() {
                 </select>
               </label>
               <label className="slider-card">
-                <span>Octave</span>
+                <span>{t('composer.octave', 'Octave')}</span>
                 <select value={seedOctave} onChange={(e) => setSeedOctave(Number(e.target.value))}>
                   {[3, 4, 5, 6].map((o) => (
                     <option key={o} value={o}>
@@ -308,24 +310,24 @@ export function ComposerLab() {
                 </select>
               </label>
               <label className="slider-card">
-                <span>Style</span>
+                <span>{t('composer.style', 'Style')}</span>
                 <select value={style} onChange={(e) => setStyle(e.target.value)}>
-                  <option value="ambient">Ambient</option>
-                  <option value="upbeat">Upbeat</option>
-                  <option value="jazz">Jazz</option>
-                  <option value="minimalist">Minimalist</option>
+                  <option value="ambient">{t('composer.style.ambient', 'Ambient')}</option>
+                  <option value="upbeat">{t('composer.style.upbeat', 'Upbeat')}</option>
+                  <option value="jazz">{t('composer.style.jazz', 'Jazz')}</option>
+                  <option value="minimalist">{t('composer.style.minimalist', 'Minimalist')}</option>
                 </select>
               </label>
             </div>
 
             <div className="composer-control-row">
               <label className="slider-card">
-                <span>Length</span>
+                <span>{t('composer.length', 'Length')}</span>
                 <strong>{length}</strong>
                 <input type="range" min="4" max="32" step="1" value={length} onChange={(e) => setLength(Number(e.target.value))} />
               </label>
               <label className="slider-card">
-                <span>Temperature</span>
+                <span>{t('composer.temperature', 'Temperature')}</span>
                 <strong>{temperature.toFixed(2)}</strong>
                 <input type="range" min="0.1" max="1" step="0.1" value={temperature} onChange={(e) => setTemperature(Number(e.target.value))} />
               </label>
@@ -333,18 +335,18 @@ export function ComposerLab() {
 
             <div className="composer-actions">
               <button className="button button--primary" onClick={generateMelody}>
-                Generate
+                {t('composer.generate', 'Generate')}
               </button>
               {melody.length > 0 && (
                 <>
                   <button className="button button--ghost" onClick={playMelody}>
-                    Play
+                    {t('composer.play', 'Play')}
                   </button>
                   <button className="button button--ghost" onClick={downloadMusicXML}>
-                    Export MusicXML
+                    {t('composer.exportXml', 'Export MusicXML')}
                   </button>
                   <button className="button button--ghost" onClick={downloadMidi}>
-                    Export MIDI
+                    {t('composer.exportMidi', 'Export MIDI')}
                   </button>
                 </>
               )}
@@ -352,10 +354,10 @@ export function ComposerLab() {
 
             {melody.length > 0 && (
               <div className="composer-info">
-                <p className="eyebrow">Generated melody</p>
+                <p className="eyebrow">{t('composer.generated', 'Generated melody')}</p>
                 <div className="melody-stats">
-                  <span>Notes: {melody.length}</span>
-                  <span>Duration: {melody.reduce((s, e) => s + e.duration, 0).toFixed(1)}s</span>
+                  <span>{t('composer.notes', 'Notes')}: {melody.length}</span>
+                  <span>{t('composer.duration', 'Duration')}: {melody.reduce((s, e) => s + e.duration, 0).toFixed(1)}s</span>
                 </div>
                 <canvas ref={pianoRef} className="piano-roll-canvas" />
                 <div className="melody-notes">
@@ -373,21 +375,21 @@ export function ComposerLab() {
 
         <aside className="panel">
           <div className="section-heading">
-            <p className="eyebrow">How it works</p>
-            <h4>Music generation tips</h4>
+            <p className="eyebrow">{t('composer.howItWorks', 'How it works')}</p>
+            <h4>{t('composer.tips', 'Music generation tips')}</h4>
           </div>
           <div className="composer-tips">
             <p className="practice-note">
-              <strong>Seed note:</strong> The starting pitch for the generated melody.
+              <strong>{t('composer.tip.seed', 'Seed note:')}</strong> {t('composer.tip.seed', 'Not goc: Cao do bat dau cho giai dieu.')}
             </p>
             <p className="practice-note">
-              <strong>Style:</strong> Defines the interval palette. Ambient is calm, Upbeat has larger jumps, Jazz includes chromatic moves, Minimalist repeats intervals.
+              <strong>{t('composer.tip.style', 'Style:')}</strong> {t('composer.tip.style', 'Phong cach: Dinh nghia tap khoang. Ambient em diu, Upbeat nhay, Jazz co chromatic, Minimalist lap lai.')}
             </p>
             <p className="practice-note">
-              <strong>Temperature:</strong> Controls duration variation (0.1 = steady, 1.0 = diverse rhythms).
+              <strong>{t('composer.tip.temp', 'Temperature:')}</strong> {t('composer.tip.temp', 'Nhiet do: Dieu chinh do bien thien truong do (0.1 = on dinh, 1.0 = da dang).')}
             </p>
             <p className="practice-note">
-              <strong>Export:</strong> Both MusicXML and MIDI formats work with notation software and DAWs.
+              <strong>{t('composer.tip.export', 'Export:')}</strong> {t('composer.tip.export', 'Xuat: MusicXML va MIDI dung tot voi phan mem soan nhac va DAW.')}
             </p>
           </div>
         </aside>
