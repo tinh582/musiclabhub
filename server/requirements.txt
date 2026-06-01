@@ -1,0 +1,7 @@
+flask==3.0.3
+flask-cors==4.0.1
+librosa==0.11.0
+numpy==1.26.4
+lxml==5.2.2
+soundfile==0.12.1
+gunicorn==22.0.0
