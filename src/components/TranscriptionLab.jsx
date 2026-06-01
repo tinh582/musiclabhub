@@ -85,7 +85,21 @@ export function TranscriptionLab() {
     workerRef.current.onmessage = (ev) => {
       const data = ev.data;
       if (data.status === 'done') {
-        const events = data.events.map((it) => ({ time: it.time, frequency: it.frequency, note: it.frequency ? frequencyToNoteName(it.frequency) : '—' }));
+        const events = data.events.map((it, index, all) => {
+          const startTime = Number(it.time || 0);
+          const nextStart = all[index + 1] ? Number(all[index + 1].time || startTime + 0.2) : startTime + 0.2;
+          const duration = Math.max(0.02, nextStart - startTime);
+          return {
+            time: startTime,
+            startTime,
+            endTime: startTime + duration,
+            duration,
+            frequency: it.frequency,
+            note: it.frequency ? frequencyToNoteName(it.frequency) : 'Rest',
+            kind: it.frequency ? 'note' : 'rest',
+            confidence: null,
+          };
+        });
         setNotes(events);
         drawPianoRoll(events, data.duration);
       }
@@ -638,10 +652,10 @@ export function TranscriptionLab() {
               {notes.length === 0 ? <p className="practice-note">{t('transcription.detectedEmpty', 'No events detected yet. Upload a short monophonic clip.')}</p> : null}
               <canvas ref={pianoRef} className="wave-canvas" style={{ width: '100%', marginTop: 8 }} />
               {notes.map((n, i) => (
-                <div key={`${n.time}-${i}`} className="detected-item">
-                  <strong>{n.kind === 'rest' ? 'Rest' : n.note}</strong>
-                  <span>{`${n.startTime?.toFixed(2) ?? n.time.toFixed(2)}s → ${n.endTime?.toFixed(2) ?? (n.time + n.duration).toFixed(2)}s`}</span>
-                  <span>{`${n.duration.toFixed(2)}s${n.frequency ? ` · ${n.frequency.toFixed(1)} Hz` : ''}`}</span>
+                <div key={`${n.time ?? i}-${i}`} className="detected-item">
+                  <strong>{n.kind === 'rest' ? 'Rest' : (n.note || 'Rest')}</strong>
+                  <span>{`${Number(n.startTime ?? n.time ?? 0).toFixed(2)}s → ${Number(n.endTime ?? ((n.time ?? 0) + (n.duration ?? 0.2))).toFixed(2)}s`}</span>
+                  <span>{`${Number(n.duration ?? Math.max(0.02, (Number(n.endTime ?? 0) - Number(n.startTime ?? n.time ?? 0)) || 0.2)).toFixed(2)}s${n.frequency ? ` · ${Number(n.frequency).toFixed(1)} Hz` : ''}`}</span>
                   <span>{n.confidence != null ? `${Math.round(n.confidence * 100)}%` : '—'}</span>
                 </div>
               ))}

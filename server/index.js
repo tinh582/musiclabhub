@@ -22,7 +22,15 @@ const useHttps = process.env.USE_HTTPS === 'true';
 
 app.use(cors({
   origin: clientOrigin,
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Sample-Rate',
+    'X-Duration',
+    'X-File-Name',
+    'X-Tempo',
+  ],
 }));
 
 let cachedToken = null;
