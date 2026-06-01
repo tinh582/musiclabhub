@@ -1896,23 +1896,208 @@ select {
 .viz-center {
   display: grid;
   place-items: center;
-  padding: 22px 16px 6px;
+  min-height: 310px;
+  padding: 26px 16px 12px;
+  perspective: 900px;
 }
 
-.viz-ball {
-  width: clamp(140px, 22vw, 220px);
+.viz-orb {
+  --orb-size: clamp(190px, 26vw, 286px);
+  position: relative;
+  width: var(--orb-size);
   aspect-ratio: 1;
-  border-radius: 999px;
-  background:
-    radial-gradient(circle, transparent 0 56%, rgba(110, 240, 209, 0.95) 58%, rgba(134, 183, 255, 0.7) 76%, rgba(7, 16, 25, 0.95) 100%);
-  box-shadow:
-    0 0 calc(28px + 68px * var(--ball-glow, 0.3)) rgba(110, 240, 209, 0.35),
-    0 0 calc(64px + 120px * var(--ball-glow, 0.3)) rgba(134, 183, 255, 0.25),
-    inset 0 0 26px rgba(255, 255, 255, 0.18);
-  border: 1px solid rgba(255, 255, 255, 0.16);
   transform: scale(var(--ball-scale, 1));
-  transition: transform 80ms linear, box-shadow 120ms linear, filter 120ms linear;
-  filter: saturate(calc(1 + var(--ball-glow, 0.3) * 0.5));
+  transform-style: preserve-3d;
+  transition: transform 80ms linear, filter 120ms linear;
+  filter: saturate(calc(1.1 + var(--ball-glow, 0.3) * 0.7));
+}
+
+.viz-orb::before,
+.viz-orb::after {
+  content: '';
+  position: absolute;
+  inset: 12%;
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.viz-orb::before {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(7, 16, 25, 0.1), rgba(7, 16, 25, 0.78) 58%, rgba(7, 16, 25, 0.95) 72%),
+    conic-gradient(from 110deg, rgba(110, 240, 209, 0.95), rgba(134, 183, 255, 0.82), rgba(243, 200, 109, 0.5), rgba(255, 151, 112, 0.58), rgba(110, 240, 209, 0.95));
+  box-shadow:
+    0 0 calc(22px + 72px * var(--ball-glow, 0.3)) rgba(110, 240, 209, 0.34),
+    0 0 calc(58px + 120px * var(--ball-glow, 0.3)) rgba(134, 183, 255, 0.22),
+    inset 0 0 18px rgba(255, 255, 255, 0.18),
+    inset 0 -20px 42px rgba(7, 16, 25, 0.66);
+  -webkit-mask: radial-gradient(circle, transparent 0 52%, #000 53% 100%);
+  mask: radial-gradient(circle, transparent 0 52%, #000 53% 100%);
+  animation: orb-spin 12s linear infinite;
+}
+
+.viz-orb::after {
+  inset: 24%;
+  background:
+    radial-gradient(circle at 42% 28%, rgba(255, 255, 255, 0.2), transparent 18%),
+    radial-gradient(circle at 52% 54%, rgba(110, 240, 209, calc(0.08 + var(--ball-glow, 0.3) * 0.18)), transparent 56%),
+    rgba(6, 13, 22, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 0 38px rgba(0, 0, 0, 0.58),
+    inset 0 0 calc(20px + 42px * var(--ball-glow, 0.3)) rgba(110, 240, 209, 0.12);
+}
+
+.viz-orb__halo,
+.viz-orb__ring,
+.viz-orb__core,
+.viz-orb__ticks,
+.viz-orb__meter {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.viz-orb__halo--outer {
+  inset: -18%;
+  background:
+    radial-gradient(circle, rgba(110, 240, 209, calc(0.12 + var(--ball-glow, 0.3) * 0.22)), transparent 52%),
+    radial-gradient(circle at 66% 36%, rgba(134, 183, 255, calc(0.14 + var(--ball-glow, 0.3) * 0.2)), transparent 42%);
+  filter: blur(18px);
+  opacity: 0.85;
+}
+
+.viz-orb__halo--inner {
+  inset: 3%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 0 0 10px rgba(110, 240, 209, 0.025),
+    0 0 calc(22px + 60px * var(--ball-glow, 0.3)) rgba(110, 240, 209, 0.24);
+}
+
+.viz-orb__ring {
+  inset: 9%;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  transform: rotateX(68deg) rotateZ(-18deg);
+}
+
+.viz-orb__ring--back {
+  border-color: rgba(134, 183, 255, 0.22);
+  box-shadow: 0 0 26px rgba(134, 183, 255, 0.18);
+  animation: orb-tilt 8s ease-in-out infinite;
+}
+
+.viz-orb__ring--front {
+  inset: 5%;
+  border-color: rgba(110, 240, 209, 0.32);
+  transform: rotateX(62deg) rotateZ(34deg);
+  box-shadow: 0 0 28px rgba(110, 240, 209, 0.24);
+  animation: orb-tilt 10s ease-in-out infinite reverse;
+}
+
+.viz-orb__core {
+  inset: 27%;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 38% 28%, rgba(255, 255, 255, 0.16), transparent 24%),
+    radial-gradient(circle at 48% 62%, rgba(110, 240, 209, calc(0.12 + var(--ball-glow, 0.3) * 0.28)), rgba(8, 17, 29, 0.84) 66%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 0 34px rgba(0, 0, 0, 0.58),
+    inset 0 0 18px rgba(110, 240, 209, 0.12);
+}
+
+.viz-orb__glass {
+  position: absolute;
+  inset: 9%;
+  border-radius: inherit;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.18), transparent 38%),
+    radial-gradient(circle at 72% 70%, rgba(134, 183, 255, 0.16), transparent 28%);
+  opacity: 0.78;
+}
+
+.viz-orb__shine {
+  position: absolute;
+  top: 19%;
+  left: 26%;
+  width: 28%;
+  height: 12%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+  filter: blur(7px);
+  transform: rotate(-28deg);
+}
+
+.viz-orb__ticks {
+  inset: 1%;
+  animation: orb-spin 24s linear infinite reverse;
+}
+
+.viz-orb__ticks span {
+  position: absolute;
+  left: 50%;
+  top: 2%;
+  width: 2px;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(203, 212, 223, 0.28);
+  transform-origin: 50% calc(var(--orb-size) * 0.49);
+  transform: rotate(calc(var(--tick-index) * 11.25deg));
+}
+
+.viz-orb__ticks span:nth-child(4n) {
+  height: 18px;
+  background: rgba(110, 240, 209, 0.48);
+}
+
+.viz-orb__meter {
+  inset: 38%;
+  display: grid;
+  place-items: center;
+  color: var(--text);
+  font-family: var(--font-title);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-shadow: 0 0 18px rgba(110, 240, 209, 0.6);
+}
+
+.viz-orb--playing .viz-orb__halo--outer {
+  animation: orb-breathe 900ms ease-in-out infinite alternate;
+}
+
+.viz-orb--playing .viz-orb__core {
+  animation: orb-core-pulse 480ms ease-in-out infinite alternate;
+}
+
+@keyframes orb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes orb-tilt {
+  50% {
+    transform: rotateX(68deg) rotateZ(24deg) scale(1.04);
+  }
+}
+
+@keyframes orb-breathe {
+  to {
+    opacity: 1;
+    transform: scale(calc(1 + var(--ball-glow, 0.3) * 0.08));
+  }
+}
+
+@keyframes orb-core-pulse {
+  to {
+    box-shadow:
+      inset 0 0 34px rgba(0, 0, 0, 0.52),
+      inset 0 0 calc(18px + 34px * var(--ball-glow, 0.3)) rgba(110, 240, 209, 0.2),
+      0 0 calc(14px + 30px * var(--ball-glow, 0.3)) rgba(110, 240, 209, 0.16);
+  }
 }
 
 .viz-panel-grid {

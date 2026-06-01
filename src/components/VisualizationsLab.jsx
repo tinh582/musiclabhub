@@ -339,14 +339,32 @@ export function VisualizationsLab() {
             <p className="practice-note">{t('viz.loaded', 'Loaded')}: {loadedLabel}</p>
           </div>
 
-          <div className="viz-center" aria-hidden="true">
-            <div
-              className="viz-ball"
-              style={{
-                '--ball-scale': ballScale,
-                '--ball-glow': ballGlow,
-              }}
-            />
+          <div
+            className="viz-center"
+            aria-hidden="true"
+            style={{
+              '--ball-scale': ballScale,
+              '--ball-glow': ballGlow,
+            }}
+          >
+            <div className={`viz-orb ${playing ? 'viz-orb--playing' : ''}`}>
+              <div className="viz-orb__halo viz-orb__halo--outer" />
+              <div className="viz-orb__halo viz-orb__halo--inner" />
+              <div className="viz-orb__ring viz-orb__ring--back" />
+              <div className="viz-orb__ring viz-orb__ring--front" />
+              <div className="viz-orb__core">
+                <span className="viz-orb__glass" />
+                <span className="viz-orb__shine" />
+              </div>
+              <div className="viz-orb__ticks">
+                {Array.from({ length: 32 }).map((_, index) => (
+                  <span key={index} style={{ '--tick-index': index }} />
+                ))}
+              </div>
+              <div className="viz-orb__meter">
+                <span>{vuPct}%</span>
+              </div>
+            </div>
           </div>
 
           <div className="viz-panel-grid">
