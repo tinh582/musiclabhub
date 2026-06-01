@@ -4,6 +4,8 @@ import { CATALOG, buildCatalog } from '../data/catalog';
 import { useAudioFeatures } from '../hooks/useAudioFeatures';
 import { formatDuration } from '../utils/audioFeatures';
 
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://localhost:5174';
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -42,6 +44,8 @@ export function ClassificationLab() {
   const [loadingModel, setLoadingModel] = useState(false);
   const [audioUrlInput, setAudioUrlInput] = useState('');
   const [customSource, setCustomSource] = useState(null);
+  const [sourceError, setSourceError] = useState('');
+  const [sourceLoading, setSourceLoading] = useState(false);
   const catalog = localizedCatalog || CATALOG;
 
   const features = useMemo(
@@ -58,7 +62,18 @@ export function ClassificationLab() {
   const baseSelected = useMemo(() => catalog.find((track) => track.id === selectedId) || CATALOG.find((track) => track.id === selectedId), [selectedId, catalog]);
   const { data: audioInfo, loading: audioLoading, error: audioError } = useAudioFeatures(customSource?.audioUrl || baseSelected?.audioUrl);
   const customTrack = useMemo(() => {
-    if (!customSource || !audioInfo) return null;
+    if (!customSource) return null;
+    if (customSource.features) {
+      return {
+        id: customSource.id,
+        title: customSource.title,
+        artist: customSource.artist,
+        genre: customSource.genre || 'linked track',
+        audioUrl: customSource.audioUrl,
+        ...customSource.features,
+      };
+    }
+    if (!audioInfo) return null;
     const derived = deriveTrackFeatures(audioInfo, baseSelected?.tempo);
     if (!derived) return null;
     return {
@@ -211,6 +226,8 @@ export function ClassificationLab() {
     }
     setCustomSource(null);
     setAudioUrlInput('');
+    setSourceError('');
+    setSourceLoading(false);
     setPlaying(false);
     if (audioRef.current) {
       audioRef.current.pause();
@@ -230,17 +247,67 @@ export function ClassificationLab() {
       artist: 'Device upload',
       audioUrl: url,
     });
+    setSourceError('');
     setPlaying(false);
     event.target.value = '';
   }
 
-  function loadAudioUrl() {
+  async function loadAudioUrl() {
     const trimmed = audioUrlInput.trim();
     if (!trimmed) return;
+    setSourceError('');
+    setSourceLoading(true);
     if (objectUrlRef.current) {
       URL.revokeObjectURL(objectUrlRef.current);
       objectUrlRef.current = null;
     }
+
+    if (/^(https?:\/\/open\.spotify\.com\/track\/|spotify:track:)/i.test(trimmed)) {
+      try {
+        const response = await fetch(`${API_BASE}/api/spotify/track?url=${encodeURIComponent(trimmed)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Unable to read Spotify track.');
+        setCustomSource({
+          id: `spotify-${data.id || Date.now()}`,
+          title: data.title || 'Spotify track',
+          artist: data.artist || 'Spotify',
+          genre: 'spotify track',
+          audioUrl: data.previewUrl || '',
+          spotifyUrl: data.spotifyUrl,
+          features: {
+            energy: data.energy ?? 0.5,
+            valence: data.valence ?? 0.5,
+            danceability: data.danceability ?? 0.5,
+            tempo: data.tempo ?? 96,
+            popularity: data.popularity ?? 62,
+            collaborative: data.collaborative ?? 0.45,
+          },
+        });
+        setPlaying(false);
+      } catch (error) {
+        setSourceError(error.message || 'Could not read this Spotify track.');
+      } finally {
+        setSourceLoading(false);
+      }
+      return;
+    }
+
+    let parsed;
+    try {
+      parsed = new URL(trimmed);
+    } catch (error) {
+      setSourceError('Please paste a valid direct audio URL or a Spotify track link.');
+      setSourceLoading(false);
+      return;
+    }
+
+    const looksLikeAudio = /\.(mp3|wav|ogg|m4a|aac|flac)(\?.*)?$/i.test(parsed.pathname);
+    if (!looksLikeAudio) {
+      setSourceError('This URL is not a direct audio file. Use an MP3/WAV link, upload a file, or paste a Spotify track link.');
+      setSourceLoading(false);
+      return;
+    }
+
     setCustomSource({
       id: `custom-url-${Date.now()}`,
       title: 'Linked audio',
@@ -248,6 +315,7 @@ export function ClassificationLab() {
       audioUrl: trimmed,
     });
     setPlaying(false);
+    setSourceLoading(false);
   }
 
   function selectChartTrack(track) {
@@ -289,15 +357,17 @@ export function ClassificationLab() {
                     value={audioUrlInput}
                     onChange={(e) => setAudioUrlInput(e.target.value)}
                   />
-                  <button type="button" className="mini-button" onClick={loadAudioUrl}>{t('class.load', 'Load')}</button>
+                  <button type="button" className="mini-button" onClick={loadAudioUrl}>{sourceLoading ? t('class.loading', 'Loading...') : t('class.load', 'Load')}</button>
                 </div>
               </div>
               {customSource && (
                 <div className="class-source-status">
-                  <span>{audioLoading ? t('class.extracting', 'Extracting features...') : `${customSource.title} - ${customSource.artist}`}</span>
+                  <span>{audioLoading && !customSource.features ? t('class.extracting', 'Extracting features...') : `${customSource.title} - ${customSource.artist}`}</span>
                   <button type="button" className="mini-button" onClick={clearCustomSource}>{t('class.clear', 'Clear')}</button>
                 </div>
               )}
+              {customSource?.spotifyUrl && <a className="mini-button class-source-link" href={customSource.spotifyUrl} target="_blank" rel="noreferrer">Open Spotify</a>}
+              {sourceError && <p className="practice-note practice-note--warning">{sourceError}</p>}
               {audioError && <p className="practice-note practice-note--warning">{t('class.audioError', 'Could not read this audio source. Try a local file or a CORS-enabled URL.')}</p>}
             </div>
 

@@ -1623,6 +1623,10 @@ select {
   white-space: nowrap;
 }
 
+.class-source-link {
+  justify-self: start;
+}
+
 .feature-space-panel {
   display: flex;
   flex-direction: column;

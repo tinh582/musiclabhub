@@ -308,6 +308,46 @@ app.get('/api/spotify/top-tracks', async (req, res) => {
   }
 });
 
+app.get('/api/spotify/track', async (req, res) => {
+  try {
+    const raw = String(req.query.url || req.query.id || '').trim();
+    if (!raw) {
+      res.status(400).json({ error: 'Missing Spotify track URL or ID.' });
+      return;
+    }
+
+    const match = raw.match(/(?:track\/|spotify:track:)([A-Za-z0-9]+)/);
+    const trackId = match ? match[1] : raw.match(/^[A-Za-z0-9]{10,}$/) ? raw : null;
+    if (!trackId) {
+      res.status(400).json({ error: 'This does not look like a Spotify track link.' });
+      return;
+    }
+
+    const token = await getAccessToken();
+    const [track, featuresPayload] = await Promise.all([
+      fetchJson(`https://api.spotify.com/v1/tracks/${trackId}`, token, { retries: 1, timeoutMs: 12000 }),
+      fetchJson(`https://api.spotify.com/v1/audio-features/${trackId}`, token, { retries: 1, timeoutMs: 12000 }),
+    ]);
+
+    res.json({
+      id: track.id,
+      title: track.name,
+      artist: (track.artists || []).map((artist) => artist.name).join(', '),
+      album: track.album?.name || 'Spotify',
+      spotifyUrl: track.external_urls?.spotify,
+      previewUrl: track.preview_url,
+      popularity: track.popularity ?? 62,
+      energy: featuresPayload.energy ?? 0.5,
+      valence: featuresPayload.valence ?? 0.5,
+      danceability: featuresPayload.danceability ?? 0.5,
+      tempo: featuresPayload.tempo ?? 96,
+      collaborative: featuresPayload.liveness ?? 0.45,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Server error.' });
+  }
+});
+
 app.get('/api/spotify/seeds', async (req, res) => {
   try {
     const authHeader = req.headers.authorization || '';
