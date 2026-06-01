@@ -46,17 +46,20 @@ function frequencyToNoteName(frequency) {
 
 export function TranscriptionLab() {
   const fileRef = useRef(null);
+  const audioRef = useRef(null);
   const canvasRef = useRef(null);
   const pianoRef = useRef(null);
   const audioCtxRef = useRef(null);
   const sourceRef = useRef(null);
   const workerRef = useRef(null);
   const bufferRef = useRef(null);
+  const audioUrlRef = useRef(null);
   const [bufferDuration, setBufferDuration] = useState(0);
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [xmlPreview, setXmlPreview] = useState('');
+  const [analysisSummary, setAnalysisSummary] = useState(null);
   const [tempo, setTempo] = useState(120);
   const [resolution, setResolution] = useState(16);
   const [triplet, setTriplet] = useState(false);
@@ -93,10 +96,27 @@ export function TranscriptionLab() {
         workerRef.current.terminate();
         workerRef.current = null;
       }
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current);
+        audioUrlRef.current = null;
+      }
     };
   }, []);
 
   const { t } = useLocale();
+
+  function setPlaybackSource(playbackBlob) {
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+
+    if (!playbackBlob || !audioRef.current) return;
+
+    const objectUrl = URL.createObjectURL(playbackBlob);
+    audioUrlRef.current = objectUrl;
+    audioRef.current.src = objectUrl;
+  }
 
   async function analyzeWithService(audioBuffer, fileName = 'audio', currentTempo = 120) {
     const channelData = audioBuffer.numberOfChannels > 0
@@ -127,19 +147,22 @@ export function TranscriptionLab() {
     }
   }
 
-  async function processArrayBuffer(arrayBuffer, fileName = 'audio') {
+  async function processArrayBuffer(arrayBuffer, fileName = 'audio', playbackBlob = null) {
     if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
     const audioBuffer = await audioCtxRef.current.decodeAudioData(arrayBuffer);
     bufferRef.current = audioBuffer;
     setBufferDuration(audioBuffer.duration);
     drawWaveform(audioBuffer);
     setXmlPreview('');
+    setAnalysisSummary(null);
+    setPlaybackSource(playbackBlob);
 
     const serviceResult = await analyzeWithService(audioBuffer, fileName, tempo);
     if (serviceResult && Array.isArray(serviceResult.notes)) {
       setNotes(serviceResult.notes);
       drawPianoRoll(serviceResult.notes, serviceResult.duration || audioBuffer.duration);
       setXmlPreview(serviceResult.musicxml || '');
+      setAnalysisSummary(serviceResult.summary || null);
       return;
     }
 
@@ -154,7 +177,7 @@ export function TranscriptionLab() {
     setLoading(true);
     try {
       const arrayBuffer = await file.arrayBuffer();
-      await processArrayBuffer(arrayBuffer, file.name);
+      await processArrayBuffer(arrayBuffer, file.name, file);
     } catch (err) {
       console.error(err);
     } finally {
@@ -169,12 +192,44 @@ export function TranscriptionLab() {
     try {
       if (fileRef.current) fileRef.current.value = '';
       const resp = await fetch(track.url);
-      const arrayBuffer = await resp.arrayBuffer();
-      await processArrayBuffer(arrayBuffer, track.label);
+      const blob = await resp.blob();
+      const arrayBuffer = await blob.arrayBuffer();
+      await processArrayBuffer(arrayBuffer, track.label, blob);
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  function playBuffer() {
+    if (!audioRef.current) return;
+    audioRef.current.play().catch(console.error);
+  }
+
+  function stopPlayback() {
+    if (!audioRef.current) return;
+    audioRef.current.pause();
+    audioRef.current.currentTime = 0;
+    setPlaying(false);
+  }
+
+  function seekBy(deltaSeconds) {
+    if (!audioRef.current) return;
+    const nextTime = Math.min(Math.max(0, audioRef.current.currentTime + deltaSeconds), audioRef.current.duration || bufferDuration || 0);
+    audioRef.current.currentTime = nextTime;
+    setBufferDuration(audioRef.current.duration || bufferDuration || 0);
+  }
+
+  function handleAudioLoadedMetadata() {
+    if (audioRef.current) {
+      setBufferDuration(audioRef.current.duration || bufferDuration || 0);
+    }
+  }
+
+  function handleAudioTimeUpdate() {
+    if (audioRef.current) {
+      setBufferDuration(audioRef.current.duration || bufferDuration || 0);
     }
   }
 
@@ -298,46 +353,6 @@ export function TranscriptionLab() {
     const q = quantizeEvents(notes, tempo, resolution, triplet, swing);
     if (q.length === 0) return;
     const start = ctx.currentTime + 0.2;
-    q.forEach((ev) => {
-      if (!ev.frequency) return;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = ev.frequency;
-      gain.gain.value = 0.06;
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      const s = start + ev.qTime;
-      const e = s + ev.qDur;
-      osc.start(s);
-      osc.stop(e);
-      scheduledRef.current.push({ osc, s, e });
-    });
-    // set playing state until last note ends
-    const last = q[q.length - 1];
-    setPlaying(true);
-    const stopAt = start + last.qTime + last.qDur + 0.1;
-    playbackStartRef.current = { start, duration: Math.max(stopAt - start, 0.1), q };
-    // animation loop to update cursor
-    function frame() {
-      const now = ctx.currentTime - start;
-      drawPianoRoll(q, playbackStartRef.current.duration, now);
-      if (now < playbackStartRef.current.duration) {
-        animationRef.current = requestAnimationFrame(frame);
-      }
-    }
-    animationRef.current = requestAnimationFrame(frame);
-    setTimeout(() => {
-      stopScheduledNotes();
-      setPlaying(false);
-      playbackStartRef.current = null;
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    }, (stopAt - ctx.currentTime) * 1000);
-  }
-
-  function exportQuantizedMusicXML() {
-    const q = quantizeEvents(notes, tempo, 16);
-    if (!q || q.length === 0) return;
     const divisions = 480;
     const header = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.1 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">\n<score-partwise version="3.1">\n  <part-list>\n    <score-part id=\"P1\">\n      <part-name>Music</part-name>\n    </score-part>\n  </part-list>\n  <part id=\"P1\">\n    <measure number=\"1\">\n      <attributes>\n        <divisions>${divisions}</divisions>\n        <key>\n          <fifths>0</fifths>\n        </key>\n        <time>\n          <beats>4</beats>\n          <beat-type>4</beat-type>\n        </time>\n        <clef>\n          <sign>G</sign>\n          <line>2</line>\n        </clef>\n      </attributes>\n`;
     let body = '';
@@ -565,9 +580,24 @@ export function TranscriptionLab() {
                 <option key={t.url} value={t.url}>{t.label}</option>
               ))}
             </select>
-            <div style={{ marginTop: 10 }}>
-              <button className="button button--primary" type="button" onClick={playBuffer} disabled={loading || playing}>{t('transcription.play', 'Play')}</button>
-              <button className="button button--ghost" type="button" onClick={stopPlayback} disabled={!playing}>{t('transcription.stop', 'Stop')}</button>
+            <div className="transcription-player" style={{ marginTop: 10 }}>
+              <div className="transcription-player__controls">
+                <button className="button button--ghost" type="button" onClick={() => seekBy(-10)} disabled={!audioRef.current?.src}>{t('transcription.rewind', 'Rewind 10s')}</button>
+                <button className="button button--primary" type="button" onClick={playBuffer} disabled={loading || playing || !audioRef.current?.src}>{t('transcription.play', 'Play')}</button>
+                <button className="button button--ghost" type="button" onClick={stopPlayback} disabled={!playing && !audioRef.current?.src}>{t('transcription.stop', 'Stop')}</button>
+                <button className="button button--ghost" type="button" onClick={() => seekBy(10)} disabled={!audioRef.current?.src}>{t('transcription.forward', 'Forward 10s')}</button>
+              </div>
+              <audio
+                ref={audioRef}
+                controls
+                preload="metadata"
+                className="transcription-audio"
+                onPlay={() => setPlaying(true)}
+                onPause={() => setPlaying(false)}
+                onEnded={() => setPlaying(false)}
+                onLoadedMetadata={handleAudioLoadedMetadata}
+                onTimeUpdate={handleAudioTimeUpdate}
+              />
               <button className="button button--ghost" type="button" onClick={exportMusicXML} disabled={notes.length === 0}>{t('transcription.exportXml', 'Export MusicXML')}</button>
               <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <label style={{ color: 'var(--muted)' }}>{t('transcription.tempo', 'Tempo')}</label>
@@ -596,14 +626,23 @@ export function TranscriptionLab() {
 
           <div style={{ marginTop: 12 }}>
             <p className="eyebrow">{t('transcription.detected', 'Detected events')}</p>
+            {analysisSummary?.warning ? <p className="analysis-summary analysis-summary--warning">{analysisSummary.warning}</p> : null}
+            {analysisSummary ? (
+              <div className="analysis-summary">
+                <span>{`${analysisSummary.noteCount || notes.length} events`}</span>
+                <span>{`Voiced ${(Math.round((analysisSummary.voicedRatio || 0) * 100))}%`}</span>
+                <span>{`Confidence ${(Math.round((analysisSummary.averageConfidence || 0) * 100))}%`}</span>
+              </div>
+            ) : null}
             <div className="detected-list">
               {notes.length === 0 ? <p className="practice-note">{t('transcription.detectedEmpty', 'No events detected yet. Upload a short monophonic clip.')}</p> : null}
               <canvas ref={pianoRef} className="wave-canvas" style={{ width: '100%', marginTop: 8 }} />
               {notes.map((n, i) => (
                 <div key={`${n.time}-${i}`} className="detected-item">
-                  <strong>{n.note}</strong>
-                  <span>{n.frequency ? `${n.frequency.toFixed(1)} Hz` : '—'}</span>
-                  <span>{n.time.toFixed(2)}s</span>
+                  <strong>{n.kind === 'rest' ? 'Rest' : n.note}</strong>
+                  <span>{`${n.startTime?.toFixed(2) ?? n.time.toFixed(2)}s → ${n.endTime?.toFixed(2) ?? (n.time + n.duration).toFixed(2)}s`}</span>
+                  <span>{`${n.duration.toFixed(2)}s${n.frequency ? ` · ${n.frequency.toFixed(1)} Hz` : ''}`}</span>
+                  <span>{n.confidence != null ? `${Math.round(n.confidence * 100)}%` : '—'}</span>
                 </div>
               ))}
               {xmlPreview ? (
