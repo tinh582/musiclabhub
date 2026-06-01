@@ -134,6 +134,14 @@ app.get('/api/transcription/health', async (req, res) => {
   }
 });
 
+app.get('/api/transcription/analyze', (req, res) => {
+  res.status(200).json({
+    ok: true,
+    message: 'Transcription analyze endpoint is available. Use POST with audio bytes.',
+    expectedMethod: 'POST',
+  });
+});
+
 app.post('/api/transcription/analyze', express.raw({ type: '*/*', limit: '25mb' }), async (req, res) => {
   try {
     const response = await fetch(`${transcriptionServiceUrl}/api/transcription/analyze`, {
