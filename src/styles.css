@@ -1544,6 +1544,85 @@ select {
   gap: 16px;
 }
 
+.class-source-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.class-source-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.class-source-upload,
+.class-source-url,
+.class-source-status {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.class-source-upload {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.class-source-upload input {
+  width: 100%;
+  color: var(--muted-strong);
+  font-size: 0.9rem;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.class-source-url {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border-radius: 14px;
+}
+
+.class-source-url input {
+  min-width: 0;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(7, 13, 21, 0.58);
+  color: var(--text);
+}
+
+.class-source-status {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 14px;
+  color: var(--muted-strong);
+}
+
+.class-source-status span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .feature-space-panel {
   display: flex;
   flex-direction: column;
@@ -2307,6 +2386,11 @@ select {
   }
 
   .composer-control-row {
+    grid-template-columns: 1fr;
+  }
+
+  .class-source-grid,
+  .class-source-url {
     grid-template-columns: 1fr;
   }
 

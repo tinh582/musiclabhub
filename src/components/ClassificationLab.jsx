@@ -4,6 +4,28 @@ import { CATALOG, buildCatalog } from '../data/catalog';
 import { useAudioFeatures } from '../hooks/useAudioFeatures';
 import { formatDuration } from '../utils/audioFeatures';
 
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function deriveTrackFeatures(audioInfo, fallbackTempo = 96) {
+  if (!audioInfo) return null;
+  const tempo = audioInfo.tempo || fallbackTempo;
+  const energy = clamp((audioInfo.rmsDb + 42) / 34, 0.08, 0.96);
+  const peakLift = clamp((audioInfo.peakDb + 24) / 24, 0, 1);
+  const tempoPulse = clamp(1 - Math.abs(tempo - 118) / 82, 0.12, 0.98);
+  const zcrBrightness = clamp(audioInfo.zeroCrossRate * 42, 0.12, 0.92);
+
+  return {
+    energy: clamp((energy * 0.76) + (peakLift * 0.24), 0.05, 0.98),
+    valence: clamp((zcrBrightness * 0.52) + (tempoPulse * 0.28) + (energy * 0.2), 0.08, 0.94),
+    danceability: clamp((tempoPulse * 0.68) + (energy * 0.32), 0.08, 0.96),
+    tempo,
+    popularity: 62,
+    collaborative: 0.56,
+  };
+}
+
 export function ClassificationLab() {
   const { t } = useLocale();
   const localizedCatalog = buildCatalog(t);
@@ -14,9 +36,12 @@ export function ClassificationLab() {
   const modelRef = useRef(null);
   const tfRef = useRef(null); // will hold imported tf module
   const audioRef = useRef(null);
+  const objectUrlRef = useRef(null);
   const [usePretrained, setUsePretrained] = useState(false);
   const [modelUrl, setModelUrl] = useState('');
   const [loadingModel, setLoadingModel] = useState(false);
+  const [audioUrlInput, setAudioUrlInput] = useState('');
+  const [customSource, setCustomSource] = useState(null);
   const catalog = localizedCatalog || CATALOG;
 
   const features = useMemo(
@@ -30,13 +55,29 @@ export function ClassificationLab() {
   }, [catalog]);
 
   const labels = useMemo(() => catalog.map((c) => genres.indexOf(c.genre)), [genres, catalog]);
-  const selected = useMemo(() => catalog.find((track) => track.id === selectedId) || CATALOG.find((track) => track.id === selectedId), [selectedId, catalog]);
+  const baseSelected = useMemo(() => catalog.find((track) => track.id === selectedId) || CATALOG.find((track) => track.id === selectedId), [selectedId, catalog]);
+  const { data: audioInfo, loading: audioLoading, error: audioError } = useAudioFeatures(customSource?.audioUrl || baseSelected?.audioUrl);
+  const customTrack = useMemo(() => {
+    if (!customSource || !audioInfo) return null;
+    const derived = deriveTrackFeatures(audioInfo, baseSelected?.tempo);
+    if (!derived) return null;
+    return {
+      id: customSource.id,
+      title: customSource.title,
+      artist: customSource.artist,
+      genre: 'custom audio',
+      audioUrl: customSource.audioUrl,
+      ...derived,
+    };
+  }, [audioInfo, baseSelected?.tempo, customSource]);
+  const selected = customTrack || baseSelected;
+  const chartCatalog = useMemo(() => (customTrack ? [...catalog, customTrack] : catalog), [catalog, customTrack]);
   const genreColors = ['var(--teal)', 'var(--blue)', 'var(--gold)', 'var(--coral)', '#b69cff', '#8fe388', '#ffb3d1', '#9fe7ff'];
   const selectedGenreIndex = Math.max(0, genres.indexOf(selected?.genre));
 
   const nearestTracks = useMemo(() => {
     if (!selected) return [];
-    return catalog
+    return chartCatalog
       .filter((track) => track.id !== selected.id)
       .map((track) => ({
         ...track,
@@ -49,10 +90,10 @@ export function ClassificationLab() {
       }))
       .sort((a, b) => a.distance - b.distance)
       .slice(0, 3);
-  }, [catalog, selected]);
+  }, [chartCatalog, selected]);
 
   const genreProfiles = useMemo(() => genres.map((genre, index) => {
-    const tracks = catalog.filter((track) => track.genre === genre);
+    const tracks = chartCatalog.filter((track) => track.genre === genre);
     const average = (key) => tracks.reduce((sum, track) => sum + track[key], 0) / Math.max(1, tracks.length);
     return {
       genre,
@@ -61,7 +102,7 @@ export function ClassificationLab() {
       energy: average('energy'),
       valence: average('valence'),
     };
-  }), [catalog, genres]);
+  }), [chartCatalog, genres]);
 
   useEffect(() => {
     let mounted = true;
@@ -141,8 +182,6 @@ export function ClassificationLab() {
     out.dispose();
   }
 
-  const { data: audioInfo, loading: audioLoading } = useAudioFeatures(selected?.audioUrl);
-
   function playDemo(track) {
     const audio = audioRef.current;
     if (!audio || !track || !track.audioUrl) return;
@@ -159,7 +198,63 @@ export function ClassificationLab() {
   useEffect(() => {
     if (selected) predict(selected);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId]);
+  }, [selectedId, customTrack]);
+
+  useEffect(() => () => {
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+  }, []);
+
+  function clearCustomSource() {
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+    setCustomSource(null);
+    setAudioUrlInput('');
+    setPlaying(false);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+  }
+
+  function handleFileUpload(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    const url = URL.createObjectURL(file);
+    objectUrlRef.current = url;
+    setCustomSource({
+      id: `custom-${Date.now()}`,
+      title: file.name.replace(/\.[^/.]+$/, '') || 'Uploaded audio',
+      artist: 'Device upload',
+      audioUrl: url,
+    });
+    setPlaying(false);
+    event.target.value = '';
+  }
+
+  function loadAudioUrl() {
+    const trimmed = audioUrlInput.trim();
+    if (!trimmed) return;
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+    setCustomSource({
+      id: `custom-url-${Date.now()}`,
+      title: 'Linked audio',
+      artist: 'External URL',
+      audioUrl: trimmed,
+    });
+    setPlaying(false);
+  }
+
+  function selectChartTrack(track) {
+    if (!track) return;
+    if (track.id !== customTrack?.id) clearCustomSource();
+    setSelectedId(track.id);
+  }
 
   return (
     <section className="classification-lab">
@@ -173,12 +268,38 @@ export function ClassificationLab() {
           <div style={{ marginTop: 12 }}>
             <label className="slider-card">
               <span>{t('class.selectTrack', 'Select track')}</span>
-                <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)} style={{ width: '100%', marginTop: 8 }}>
+                <select value={selectedId} onChange={(e) => { clearCustomSource(); setSelectedId(e.target.value); }} style={{ width: '100%', marginTop: 8 }}>
                 {catalog.map((track) => (
                   <option key={track.id} value={track.id}>{`${track.title} — ${track.artist}`}</option>
                 ))}
               </select>
             </label>
+
+            <div className="class-source-panel">
+              <p className="eyebrow">{t('class.customSource', 'Analyze your song')}</p>
+              <div className="class-source-grid">
+                <label className="class-source-upload">
+                  <span>{t('class.uploadAudio', 'Upload audio')}</span>
+                  <input type="file" accept="audio/*" onChange={handleFileUpload} />
+                </label>
+                <div className="class-source-url">
+                  <input
+                    type="text"
+                    placeholder={t('class.audioUrl', 'Paste audio URL')}
+                    value={audioUrlInput}
+                    onChange={(e) => setAudioUrlInput(e.target.value)}
+                  />
+                  <button type="button" className="mini-button" onClick={loadAudioUrl}>{t('class.load', 'Load')}</button>
+                </div>
+              </div>
+              {customSource && (
+                <div className="class-source-status">
+                  <span>{audioLoading ? t('class.extracting', 'Extracting features...') : `${customSource.title} - ${customSource.artist}`}</span>
+                  <button type="button" className="mini-button" onClick={clearCustomSource}>{t('class.clear', 'Clear')}</button>
+                </div>
+              )}
+              {audioError && <p className="practice-note practice-note--warning">{t('class.audioError', 'Could not read this audio source. Try a local file or a CORS-enabled URL.')}</p>}
+            </div>
 
             <div style={{ marginTop: 12 }}>
               <div className="mini-analytics" style={{ padding: 12 }}>
@@ -295,15 +416,15 @@ export function ClassificationLab() {
               <text className="feature-space-quadrant" x="266" y="62">lifted / driving</text>
               <text className="feature-space-quadrant" x="76" y="250">soft / shadowed</text>
               <text className="feature-space-quadrant" x="262" y="250">intense / moody</text>
-              {catalog.map((track) => {
+              {chartCatalog.map((track) => {
                 const x = 62 + track.energy * 318;
                 const y = 266 - track.valence * 228;
-                const isSelected = track.id === selectedId;
+                const isSelected = track.id === selected.id;
                 const color = genreColors[Math.max(0, genres.indexOf(track.genre)) % genreColors.length];
                 const radius = 7 + track.danceability * 5;
                 return (
-                  <g key={track.id} className="feature-point-wrap" onClick={() => setSelectedId(track.id)} onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') setSelectedId(track.id);
+                  <g key={track.id} className="feature-point-wrap" onClick={() => selectChartTrack(track)} onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') selectChartTrack(track);
                   }} role="button" tabIndex="0" aria-label={`${track.title} - ${track.genre}`}>
                     <title>{`${track.title} - ${track.genre}`}</title>
                     <circle cx={x} cy={y} r={radius + 12} fill="transparent" />
@@ -335,7 +456,7 @@ export function ClassificationLab() {
             <p className="eyebrow">{t('class.nearest', 'Nearest tracks')}</p>
             <div className="feature-neighbor-list">
               {nearestTracks.map((track) => (
-                <button key={track.id} type="button" className="feature-neighbor" onClick={() => setSelectedId(track.id)}>
+                <button key={track.id} type="button" className="feature-neighbor" onClick={() => selectChartTrack(track)}>
                   <span>
                     <strong>{track.title}</strong>
                     <small>{track.genre}</small>
