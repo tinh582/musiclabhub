@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLocale } from '../i18n/LocaleProvider';
 import { useSiteContent } from '../hooks/useSiteContent';
@@ -12,12 +12,31 @@ export function DashboardPage() {
   const audioRef = useRef(null);
   const [playingId, setPlayingId] = useState(null);
   const localizedCatalog = buildCatalog(t);
+  const catalog = localizedCatalog || CATALOG;
   const [activeId, setActiveId] = useState(localizedCatalog[0]?.id || CATALOG[0]?.id || null);
-  const activeTrack = (localizedCatalog.find((tt) => tt.id === activeId) || CATALOG.find((tt) => tt.id === activeId));
+  const activeTrack = (catalog.find((tt) => tt.id === activeId) || CATALOG.find((tt) => tt.id === activeId));
   const { data: audioInfo, loading: audioLoading } = useAudioFeatures(activeTrack?.audioUrl);
+  const genres = useMemo(() => Array.from(new Set(catalog.map((track) => track.genre))), [catalog]);
+  const genreColors = ['var(--teal)', 'var(--blue)', 'var(--gold)', 'var(--coral)', '#b69cff', '#8fe388', '#ffb3d1', '#9fe7ff'];
+  const activeGenreIndex = Math.max(0, genres.indexOf(activeTrack?.genre));
+  const nearestTracks = useMemo(() => {
+    if (!activeTrack) return [];
+    return catalog
+      .filter((track) => track.id !== activeTrack.id)
+      .map((track) => ({
+        ...track,
+        distance: Math.hypot(
+          track.energy - activeTrack.energy,
+          track.valence - activeTrack.valence,
+          track.danceability - activeTrack.danceability,
+        ),
+      }))
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, 3);
+  }, [activeTrack, catalog]);
 
   function playDemoFor(id) {
-    const track = (localizedCatalog.find((t) => t.id === id) || CATALOG.find((t) => t.id === id));
+    const track = (catalog.find((t) => t.id === id) || CATALOG.find((t) => t.id === id));
     if (!track || !track.audioUrl) return;
     setActiveId(track.id);
     const audio = audioRef.current;
@@ -81,33 +100,91 @@ export function DashboardPage() {
         <article className="mini-analytics panel">
           <div className="section-heading">
             <p className="eyebrow">{t('dashboard.mini.title', 'Mini analytics')}</p>
-            <h4>{t('dashboard.mini.subtitle', 'Catalog feature scatter — click to play demo')}</h4>
+            <h4>{t('dashboard.mini.subtitle', 'Catalog feature map - click a point to play')}</h4>
           </div>
           <audio ref={audioRef} onEnded={() => setPlayingId(null)} />
-          <svg viewBox="0 0 360 140" style={{ width: '100%', marginTop: 12 }}>
-            <rect x="0" y="0" width="360" height="140" rx="10" fill="rgba(255,255,255,0.02)" />
-            {CATALOG.map((t, i) => {
-              const x = 36 + t.energy * 288;
-              const y = 110 - t.valence * 80;
-              const isPlaying = playingId === t.id;
-              return (
-                <g key={t.id} transform={`translate(${x}, ${y})`} style={{ cursor: 'pointer' }} onClick={() => playDemoFor(t.id)}>
-                  <circle r={isPlaying ? 8 : 6} fill={isPlaying ? 'var(--teal)' : 'rgba(134,183,255,0.9)'} />
-                  <text x={10} y={5} fill="var(--muted)" fontSize="11">{t.title}</text>
-                </g>
-              );
-            })}
-          </svg>
-          <div style={{ marginTop: 12 }}>
-            <p className="eyebrow">{t('dashboard.mini.sample', 'Sample info')}</p>
-            <div className="mini-analytics" style={{ padding: 12 }}>
-              <strong>{activeTrack ? activeTrack.title : t('dashboard.mini.noTrack', 'No track selected')}</strong>
-              <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
-                <span style={{ color: 'var(--muted)' }}>{t('dashboard.mini.duration', 'Duration')}: {audioLoading || !audioInfo ? 'Loading...' : formatDuration(audioInfo.duration)}</span>
-                <span style={{ color: 'var(--muted)' }}>{t('dashboard.mini.peak', 'Peak')}: {audioLoading || !audioInfo ? 'Loading...' : `${audioInfo.peakDb.toFixed(1)} dB`}</span>
-                <span style={{ color: 'var(--muted)' }}>{t('dashboard.mini.rms', 'RMS')}: {audioLoading || !audioInfo ? 'Loading...' : `${audioInfo.rmsDb.toFixed(1)} dB`}</span>
-                <span style={{ color: 'var(--muted)' }}>{t('dashboard.mini.tempo', 'Tempo')}: {audioLoading || !audioInfo ? 'Loading...' : (audioInfo.tempo ? `${audioInfo.tempo} BPM` : 'n/a')}</span>
+          <div className="dashboard-feature-map">
+            <div className="dashboard-feature-chart">
+              <svg viewBox="0 0 520 220" role="img" aria-label={t('dashboard.mini.subtitle', 'Catalog feature map')}>
+                <rect className="feature-space-bg" x="0" y="0" width="520" height="220" rx="18" />
+                <line className="feature-space-midline" x1="58" y1="106" x2="480" y2="106" />
+                <line className="feature-space-midline" x1="269" y1="30" x2="269" y2="176" />
+                {[0.25, 0.5, 0.75].map((tick) => (
+                  <g key={tick}>
+                    <line className="feature-space-gridline" x1={58 + tick * 422} y1="30" x2={58 + tick * 422} y2="176" />
+                    <line className="feature-space-gridline" x1="58" y1={176 - tick * 146} x2="480" y2={176 - tick * 146} />
+                  </g>
+                ))}
+                <text className="feature-space-axis" x="58" y="202">Low energy</text>
+                <text className="feature-space-axis" x="398" y="202">High energy</text>
+                <text className="feature-space-quadrant" x="72" y="52">bright / calm</text>
+                <text className="feature-space-quadrant" x="344" y="52">bright / driving</text>
+                <text className="feature-space-quadrant" x="72" y="164">soft / moody</text>
+                <text className="feature-space-quadrant" x="334" y="164">high push</text>
+                {catalog.map((track) => {
+                  const x = 58 + track.energy * 422;
+                  const y = 176 - track.valence * 146;
+                  const isActive = activeTrack?.id === track.id;
+                  const isPlaying = playingId === track.id;
+                  const color = genreColors[Math.max(0, genres.indexOf(track.genre)) % genreColors.length];
+                  const radius = 7 + track.danceability * 5;
+                  return (
+                    <g
+                      key={track.id}
+                      className="feature-point-wrap"
+                      onClick={() => playDemoFor(track.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') playDemoFor(track.id);
+                      }}
+                      role="button"
+                      tabIndex="0"
+                      aria-label={`${track.title} - ${track.genre}`}
+                    >
+                      <title>{`${track.title} - ${track.artist}`}</title>
+                      <circle cx={x} cy={y} r={radius + 12} fill="transparent" />
+                      {isActive && <circle cx={x} cy={y} r={radius + 10} className="feature-point-ring" />}
+                      <circle
+                        cx={x}
+                        cy={y}
+                        r={isActive || isPlaying ? radius + 2 : radius}
+                        fill={isActive || isPlaying ? 'var(--teal)' : color}
+                        className="feature-point"
+                      />
+                    </g>
+                  );
+                })}
+              </svg>
+            </div>
+            <div className="dashboard-feature-side">
+              <div className="feature-selected-card">
+                <span className="feature-dot" style={{ background: genreColors[activeGenreIndex % genreColors.length] }} />
+                <div>
+                  <p>{activeTrack?.genre || t('dashboard.mini.noTrack', 'No track selected')}</p>
+                  <strong>{activeTrack ? activeTrack.title : t('dashboard.mini.noTrack', 'No track selected')}</strong>
+                  <small>{activeTrack?.artist}</small>
+                </div>
               </div>
+              <div className="feature-metric-grid dashboard-feature-metrics">
+                <span>Energy <strong>{activeTrack ? Math.round(activeTrack.energy * 100) : 0}%</strong></span>
+                <span>Valence <strong>{activeTrack ? Math.round(activeTrack.valence * 100) : 0}%</strong></span>
+                <span>Dance <strong>{activeTrack ? Math.round(activeTrack.danceability * 100) : 0}%</strong></span>
+              </div>
+              <div className="dashboard-neighbor-row">
+                {nearestTracks.map((track) => (
+                  <button key={track.id} type="button" className="mini-button" onClick={() => playDemoFor(track.id)}>
+                    {track.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="dashboard-sample-card">
+            <p className="eyebrow">{t('dashboard.mini.sample', 'Sample info')}</p>
+            <div className="dashboard-sample-grid">
+              <span>{t('dashboard.mini.duration', 'Duration')} <strong>{audioLoading || !audioInfo ? 'Loading...' : formatDuration(audioInfo.duration)}</strong></span>
+              <span>{t('dashboard.mini.peak', 'Peak')} <strong>{audioLoading || !audioInfo ? 'Loading...' : `${audioInfo.peakDb.toFixed(1)} dB`}</strong></span>
+              <span>{t('dashboard.mini.rms', 'RMS')} <strong>{audioLoading || !audioInfo ? 'Loading...' : `${audioInfo.rmsDb.toFixed(1)} dB`}</strong></span>
+              <span>{t('dashboard.mini.tempo', 'Tempo')} <strong>{audioLoading || !audioInfo ? 'Loading...' : (audioInfo.tempo ? `${audioInfo.tempo} BPM` : 'n/a')}</strong></span>
             </div>
           </div>
         </article>
