@@ -353,6 +353,46 @@ export function TranscriptionLab() {
     const q = quantizeEvents(notes, tempo, resolution, triplet, swing);
     if (q.length === 0) return;
     const start = ctx.currentTime + 0.2;
+    q.forEach((ev) => {
+      if (!ev.frequency) return;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = ev.frequency;
+      gain.gain.value = 0.06;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      const s = start + ev.qTime;
+      const e = s + ev.qDur;
+      osc.start(s);
+      osc.stop(e);
+      scheduledRef.current.push({ osc, s, e });
+    });
+    // set playing state until last note ends
+    const last = q[q.length - 1];
+    setPlaying(true);
+    const stopAt = start + last.qTime + last.qDur + 0.1;
+    playbackStartRef.current = { start, duration: Math.max(stopAt - start, 0.1), q };
+    // animation loop to update cursor
+    function frame() {
+      const now = ctx.currentTime - start;
+      drawPianoRoll(q, playbackStartRef.current.duration, now);
+      if (now < playbackStartRef.current.duration) {
+        animationRef.current = requestAnimationFrame(frame);
+      }
+    }
+    animationRef.current = requestAnimationFrame(frame);
+    setTimeout(() => {
+      stopScheduledNotes();
+      setPlaying(false);
+      playbackStartRef.current = null;
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    }, (stopAt - ctx.currentTime) * 1000);
+  }
+
+  function exportQuantizedMusicXML() {
+    const q = quantizeEvents(notes, tempo, 16);
+    if (!q || q.length === 0) return;
     const divisions = 480;
     const header = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.1 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">\n<score-partwise version="3.1">\n  <part-list>\n    <score-part id=\"P1\">\n      <part-name>Music</part-name>\n    </score-part>\n  </part-list>\n  <part id=\"P1\">\n    <measure number=\"1\">\n      <attributes>\n        <divisions>${divisions}</divisions>\n        <key>\n          <fifths>0</fifths>\n        </key>\n        <time>\n          <beats>4</beats>\n          <beat-type>4</beat-type>\n        </time>\n        <clef>\n          <sign>G</sign>\n          <line>2</line>\n        </clef>\n      </attributes>\n`;
     let body = '';
@@ -484,46 +524,6 @@ export function TranscriptionLab() {
     a.download = 'transcription-quantized.mid';
     a.click();
     URL.revokeObjectURL(url);
-  }
-
-  function playBuffer() {
-    if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-    if (bufferRef.current) {
-      stopPlayback();
-      const source = audioCtxRef.current.createBufferSource();
-      source.buffer = bufferRef.current;
-      source.connect(audioCtxRef.current.destination);
-      source.start();
-      sourceRef.current = source;
-      setPlaying(true);
-      source.onended = () => setPlaying(false);
-      return;
-    }
-    if (!fileRef.current || !fileRef.current.files[0]) return;
-    const file = fileRef.current.files[0];
-    file.arrayBuffer()
-      .then((arrayBuffer) => audioCtxRef.current.decodeAudioData(arrayBuffer))
-      .then((audioBuffer) => {
-        bufferRef.current = audioBuffer;
-        stopPlayback();
-        const source = audioCtxRef.current.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(audioCtxRef.current.destination);
-        source.start();
-        sourceRef.current = source;
-        setPlaying(true);
-        source.onended = () => setPlaying(false);
-      })
-      .catch(console.error);
-  }
-
-  function stopPlayback() {
-    if (sourceRef.current) {
-      try { sourceRef.current.stop(); } catch (e) { /* ignore */ }
-      sourceRef.current.disconnect();
-      sourceRef.current = null;
-    }
-    setPlaying(false);
   }
 
   function exportMusicXML() {
