@@ -1539,6 +1539,214 @@ select {
   gap: 16px;
 }
 
+.feature-space-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.feature-space-card {
+  margin-top: 4px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(circle at 76% 22%, rgba(110, 240, 209, 0.1), transparent 30%),
+    rgba(255, 255, 255, 0.025);
+  overflow: hidden;
+}
+
+.feature-space-chart {
+  width: 100%;
+  min-height: 300px;
+}
+
+.feature-space-bg {
+  fill: rgba(8, 16, 26, 0.78);
+}
+
+.feature-space-gridline {
+  stroke: rgba(255, 255, 255, 0.045);
+  stroke-width: 1;
+}
+
+.feature-space-midline {
+  stroke: rgba(255, 255, 255, 0.11);
+  stroke-width: 1.2;
+  stroke-dasharray: 5 8;
+}
+
+.feature-space-axis,
+.feature-space-quadrant {
+  fill: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.feature-space-quadrant {
+  fill: rgba(203, 212, 223, 0.52);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.feature-point-wrap {
+  cursor: pointer;
+  outline: none;
+}
+
+.feature-point {
+  stroke: rgba(255, 255, 255, 0.42);
+  stroke-width: 1.3;
+  filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.28));
+  transition: r 160ms ease, opacity 160ms ease;
+}
+
+.feature-point-wrap:hover .feature-point,
+.feature-point-wrap:focus .feature-point {
+  opacity: 0.86;
+}
+
+.feature-point-ring {
+  fill: none;
+  stroke: rgba(110, 240, 209, 0.7);
+  stroke-width: 2;
+  stroke-dasharray: 4 4;
+}
+
+.feature-space-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(180px, 0.9fr);
+  gap: 10px;
+}
+
+.feature-selected-card,
+.feature-metric-grid,
+.feature-neighbor,
+.feature-cluster {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.feature-selected-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border-radius: 18px;
+}
+
+.feature-selected-card p {
+  margin: 0 0 3px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.feature-selected-card strong,
+.feature-neighbor strong,
+.feature-cluster strong {
+  display: block;
+  min-width: 0;
+}
+
+.feature-selected-card small,
+.feature-neighbor small,
+.feature-cluster small {
+  color: var(--muted);
+}
+
+.feature-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.04);
+}
+
+.feature-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.feature-metric-grid span {
+  display: grid;
+  gap: 4px;
+  padding: 12px 10px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.feature-metric-grid span + span {
+  border-left: 1px solid var(--line);
+}
+
+.feature-metric-grid strong {
+  color: var(--text);
+  font-family: var(--font-title);
+  font-size: 1.1rem;
+  letter-spacing: 0;
+}
+
+.feature-space-section {
+  display: grid;
+  gap: 8px;
+}
+
+.feature-neighbor-list,
+.feature-cluster-list {
+  display: grid;
+  gap: 8px;
+}
+
+.feature-neighbor {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: 14px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.feature-neighbor:hover {
+  border-color: rgba(110, 240, 209, 0.24);
+  background: rgba(110, 240, 209, 0.06);
+}
+
+.feature-neighbor em {
+  color: var(--teal);
+  font-style: normal;
+  font-weight: 800;
+}
+
+.feature-cluster-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.feature-cluster {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 10px;
+  align-items: center;
+  padding: 10px 11px;
+  border-radius: 14px;
+}
+
+.feature-cluster small {
+  grid-column: 2;
+}
+
 .prob-list {
   display: grid;
   gap: 10px;
@@ -1835,6 +2043,17 @@ select {
 
   .composer-control-row {
     grid-template-columns: 1fr;
+  }
+
+  .feature-space-summary,
+  .feature-metric-grid,
+  .feature-cluster-list {
+    grid-template-columns: 1fr;
+  }
+
+  .feature-metric-grid span + span {
+    border-left: 0;
+    border-top: 1px solid var(--line);
   }
 
   .sidebar {
