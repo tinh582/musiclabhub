@@ -4,7 +4,7 @@ import { useLocale } from '../i18n/LocaleProvider';
 
 export function LoginPage() {
   const { t } = useLocale();
-  const { currentUser, loginUser, registerUser, logoutUser } = useOutletContext();
+  const { currentUser, currentUserName, loginUser, registerUser, logoutUser } = useOutletContext();
   const navigate = useNavigate();
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
@@ -43,7 +43,8 @@ export function LoginPage() {
             <p className="eyebrow">{t('login.account', 'Account')}</p>
             <h4>{t('login.signedIn', 'Signed in')}</h4>
           </div>
-          <p className="muted">{t('login.signedInAs', 'You are signed in as')} <strong>{currentUser}</strong>.</p>
+          <p className="muted">{t('login.signedInAs', 'You are signed in as')} <strong>{currentUserName || currentUser}</strong>.</p>
+          <p className="muted">{t('account.email', 'Email')} <strong>{currentUser}</strong></p>
           <div className="auth-actions">
             <button type="button" className="mini-button" onClick={() => navigate('/')}>{t('login.goDashboard', 'Go to dashboard')}</button>
             <button type="button" className="btn" onClick={logoutUser}>{t('login.logout', 'Logout')}</button>

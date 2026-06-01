@@ -4,11 +4,31 @@ import { useLocale } from '../i18n/LocaleProvider';
 import { useSiteContent } from '../hooks/useSiteContent';
 import { supabase } from '../lib/supabaseClient';
 
+function getDisplayName(user) {
+  if (!user) {
+    return null;
+  }
+
+  const metadata = user.user_metadata || {};
+  const candidate = metadata.full_name || metadata.name || metadata.display_name || metadata.preferred_name;
+  if (typeof candidate === 'string' && candidate.trim()) {
+    return candidate.trim();
+  }
+
+  return user.email ? user.email.split('@')[0] : null;
+}
+
 export function Layout() {
   const { locale, setLocale, t } = useLocale();
   const { navigationItems } = useSiteContent();
   const [showBrand, setShowBrand] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
+  const [currentUserName, setCurrentUserName] = useState(null);
+
+  const applySessionUser = (user) => {
+    setCurrentUser(user?.email || null);
+    setCurrentUserName(getDisplayName(user));
+  };
 
   useEffect(() => {
     function onScroll() {
@@ -26,12 +46,12 @@ export function Layout() {
     async function loadSession() {
       const { data } = await supabase.auth.getSession();
       if (mounted) {
-        setCurrentUser(data.session?.user?.email || null);
+        applySessionUser(data.session?.user || null);
       }
     }
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setCurrentUser(session?.user?.email || null);
+      applySessionUser(session?.user || null);
     });
 
     loadSession();
@@ -63,6 +83,25 @@ export function Layout() {
   const logoutUser = async () => {
     await supabase.auth.signOut();
     setCurrentUser(null);
+    setCurrentUserName(null);
+  };
+
+  const updateDisplayName = async (displayName) => {
+    const nextName = displayName.trim();
+    if (!nextName) {
+      return { ok: false, message: t('account.nameRequired', 'Please enter a display name.') };
+    }
+
+    const { data, error } = await supabase.auth.updateUser({
+      data: { full_name: nextName },
+    });
+
+    if (error) {
+      return { ok: false, message: error.message };
+    }
+
+    setCurrentUserName(getDisplayName(data.user) || nextName);
+    return { ok: true };
   };
 
   return (
@@ -130,7 +169,7 @@ export function Layout() {
         </header>
 
         <section className="page-root">
-          <Outlet context={{ currentUser, loginUser, registerUser, logoutUser }} />
+          <Outlet context={{ currentUser, currentUserName, loginUser, registerUser, logoutUser, updateDisplayName }} />
         </section>
       </main>
     </div>

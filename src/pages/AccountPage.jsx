@@ -35,10 +35,13 @@ function getSpotifyToken() {
 
 export function AccountPage() {
   const { t } = useLocale();
-  const { currentUser, logoutUser } = useOutletContext();
+  const { currentUser, currentUserName, logoutUser, updateDisplayName } = useOutletContext();
   const [savedSets, setSavedSets] = useState([]);
   const [recState, setRecState] = useState(null);
   const [spotifyToken, setSpotifyToken] = useState(getSpotifyToken());
+  const [displayName, setDisplayName] = useState(currentUserName || '');
+  const [nameMessage, setNameMessage] = useState('');
+  const [isSavingName, setIsSavingName] = useState(false);
 
   useEffect(() => {
     if (!currentUser) {
@@ -55,6 +58,11 @@ export function AccountPage() {
   }, [currentUser]);
 
   useEffect(() => {
+    setDisplayName(currentUserName || '');
+    setNameMessage('');
+  }, [currentUserName, currentUser]);
+
+  useEffect(() => {
     const refreshToken = () => setSpotifyToken(getSpotifyToken());
     window.addEventListener('focus', refreshToken);
     return () => window.removeEventListener('focus', refreshToken);
@@ -68,6 +76,27 @@ export function AccountPage() {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(TOKEN_EXPIRY_KEY);
     setSpotifyToken(null);
+  };
+
+  const handleSaveName = async (event) => {
+    event.preventDefault();
+    const nextName = displayName.trim();
+    if (!nextName) {
+      setNameMessage(t('account.nameRequired', 'Please enter a display name.'));
+      return;
+    }
+
+    setIsSavingName(true);
+    const result = await updateDisplayName(nextName);
+    setIsSavingName(false);
+
+    if (!result.ok) {
+      setNameMessage(result.message || t('account.nameUpdateFailed', 'Unable to update your name.'));
+      return;
+    }
+
+    setDisplayName(nextName);
+    setNameMessage(t('account.nameSaved', 'Display name updated.'));
   };
 
   if (!currentUser) {
@@ -95,7 +124,28 @@ export function AccountPage() {
             <p className="eyebrow">{t('account.profile', 'Profile')}</p>
             <h4>{t('account.yourAccount', 'Your account')}</h4>
           </div>
-          <p className="muted">{t('account.signedInAs', 'Signed in as')} <strong>{currentUser}</strong>.</p>
+          <form className="auth-form" onSubmit={handleSaveName}>
+            <label className="auth-field">
+              <span>{t('account.nameLabel', 'Display name')}</span>
+              <input
+                type="text"
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+                placeholder={t('account.namePlaceholder', 'Your display name')}
+                autoComplete="name"
+                required
+              />
+            </label>
+            <p className="muted">{t('account.nameHelper', 'This is the name shown across your account.')}</p>
+            {nameMessage ? <p className="auth-message">{nameMessage}</p> : null}
+            <div className="auth-actions">
+              <button type="submit" className="btn" disabled={isSavingName}>
+                {isSavingName ? t('account.nameSaving', 'Saving...') : t('account.nameSave', 'Save name')}
+              </button>
+            </div>
+          </form>
+          <p className="muted">{t('account.signedInAs', 'Signed in as')} <strong>{currentUserName || currentUser}</strong>.</p>
+          <p className="muted">{t('account.email', 'Email')} <strong>{currentUser}</strong></p>
           <div className="auth-actions">
             <button type="button" className="btn" onClick={() => logoutUser()}>{t('login.logout', 'Logout')}</button>
           </div>
