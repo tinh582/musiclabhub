@@ -72,7 +72,7 @@ export function Layout() {
           <div className="brand-block">
             <div className="brand-mark">MLH</div>
             <div>
-              <p className="eyebrow">{t('layout.brandTag', 'Graduation project')}</p>
+              <p className="eyebrow">{t('layout.brandTag', 'Interactive music toolkit')}</p>
               <h1>{t('layout.appName', 'Music Lab Hub')}</h1>
             </div>
           </div>
