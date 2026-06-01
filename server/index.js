@@ -130,7 +130,12 @@ app.get('/api/transcription/health', async (req, res) => {
     const payload = await response.json();
     res.status(response.status).json(payload);
   } catch (error) {
-    res.status(503).json({ ok: false, error: error.message || 'Transcription service unavailable.' });
+    res.status(503).json({
+      ok: false,
+      error: error.message || 'Transcription service unavailable.',
+      transcriptionServiceUrl,
+      hint: 'Set TRANSCRIPTION_SERVICE_URL to a reachable Python transcription service URL.',
+    });
   }
 });
 
@@ -160,7 +165,12 @@ app.post('/api/transcription/analyze', express.raw({ type: '*/*', limit: '25mb' 
     res.set('Content-Type', response.headers.get('content-type') || 'application/json');
     res.send(text);
   } catch (error) {
-    res.status(503).json({ error: error.message || 'Transcription service unavailable.' });
+    res.status(503).json({
+      ok: false,
+      error: error.message || 'Transcription service unavailable.',
+      transcriptionServiceUrl,
+      hint: 'Python transcription service is unreachable from this server. Configure TRANSCRIPTION_SERVICE_URL.',
+    });
   }
 });
 
