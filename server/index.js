@@ -17,6 +17,7 @@ const port = Number(process.env.PORT || 5174);
 const clientOrigin = process.env.CLIENT_ORIGIN || 'https://localhost:5173';
 const redirectUri = process.env.SPOTIFY_REDIRECT_URI || 'https://localhost:5173/callback';
 const authScopes = process.env.SPOTIFY_SCOPES || 'user-read-email user-top-read';
+const transcriptionServiceUrl = process.env.TRANSCRIPTION_SERVICE_URL || 'http://127.0.0.1:8000';
 const useHttps = process.env.USE_HTTPS === 'true';
 
 app.use(cors({
@@ -113,6 +114,38 @@ async function fetchJson(url, token, options = {}) {
 
 app.get('/api/health', (req, res) => {
   res.json({ ok: true });
+});
+
+app.get('/api/transcription/health', async (req, res) => {
+  try {
+    const response = await fetch(`${transcriptionServiceUrl}/api/health`);
+    const payload = await response.json();
+    res.status(response.status).json(payload);
+  } catch (error) {
+    res.status(503).json({ ok: false, error: error.message || 'Transcription service unavailable.' });
+  }
+});
+
+app.post('/api/transcription/analyze', express.raw({ type: '*/*', limit: '25mb' }), async (req, res) => {
+  try {
+    const response = await fetch(`${transcriptionServiceUrl}/api/transcription/analyze`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': req.headers['content-type'] || 'application/octet-stream',
+        'X-Sample-Rate': req.headers['x-sample-rate'] || '',
+        'X-Duration': req.headers['x-duration'] || '',
+        'X-File-Name': req.headers['x-file-name'] || '',
+      },
+      body: req.body,
+    });
+
+    const text = await response.text();
+    res.status(response.status);
+    res.set('Content-Type', response.headers.get('content-type') || 'application/json');
+    res.send(text);
+  } catch (error) {
+    res.status(503).json({ error: error.message || 'Transcription service unavailable.' });
+  }
 });
 
 app.get('/api/spotify/login', (req, res) => {

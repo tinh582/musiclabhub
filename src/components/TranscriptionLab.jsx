@@ -1,6 +1,8 @@
 import { useRef, useState, useEffect } from 'react';
 import { useLocale } from '../i18n/LocaleProvider';
 
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://localhost:5174';
+
 function autoCorrelate(buffer, sampleRate) {
   const size = buffer.length;
   let rms = 0;
@@ -96,13 +98,52 @@ export function TranscriptionLab() {
 
   const { t } = useLocale();
 
-  async function processArrayBuffer(arrayBuffer) {
+  async function analyzeWithService(audioBuffer, fileName = 'audio', currentTempo = 120) {
+    const channelData = audioBuffer.numberOfChannels > 0
+      ? audioBuffer.getChannelData(0).slice()
+      : new Float32Array(0);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/transcription/analyze`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'X-Sample-Rate': String(audioBuffer.sampleRate),
+          'X-Duration': String(audioBuffer.duration),
+          'X-File-Name': fileName,
+          'X-Tempo': String(currentTempo),
+        },
+        body: channelData.buffer,
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      return response.json();
+    } catch (error) {
+      console.warn('Transcription service unavailable, falling back to local worker.', error);
+      return null;
+    }
+  }
+
+  async function processArrayBuffer(arrayBuffer, fileName = 'audio') {
     if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
     const audioBuffer = await audioCtxRef.current.decodeAudioData(arrayBuffer);
     bufferRef.current = audioBuffer;
     setBufferDuration(audioBuffer.duration);
     drawWaveform(audioBuffer);
-    // send channel data to worker for detection
+    setXmlPreview('');
+
+    const serviceResult = await analyzeWithService(audioBuffer, fileName, tempo);
+    if (serviceResult && Array.isArray(serviceResult.notes)) {
+      setNotes(serviceResult.notes);
+      drawPianoRoll(serviceResult.notes, serviceResult.duration || audioBuffer.duration);
+      setXmlPreview(serviceResult.musicxml || '');
+      return;
+    }
+
+    // send channel data to worker for fallback detection
     const channelData = audioBuffer.getChannelData(0).slice();
     workerRef.current.postMessage({ cmd: 'detect', audioBuffer: channelData.buffer, sampleRate: audioBuffer.sampleRate }, [channelData.buffer]);
   }
@@ -113,7 +154,7 @@ export function TranscriptionLab() {
     setLoading(true);
     try {
       const arrayBuffer = await file.arrayBuffer();
-      await processArrayBuffer(arrayBuffer);
+      await processArrayBuffer(arrayBuffer, file.name);
     } catch (err) {
       console.error(err);
     } finally {
@@ -129,7 +170,7 @@ export function TranscriptionLab() {
       if (fileRef.current) fileRef.current.value = '';
       const resp = await fetch(track.url);
       const arrayBuffer = await resp.arrayBuffer();
-      await processArrayBuffer(arrayBuffer);
+      await processArrayBuffer(arrayBuffer, track.label);
     } catch (err) {
       console.error(err);
     } finally {
