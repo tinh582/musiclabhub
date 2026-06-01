@@ -271,9 +271,10 @@ export function ClassificationLab() {
           id: `spotify-${data.id || Date.now()}`,
           title: data.title || 'Spotify track',
           artist: data.artist || 'Spotify',
-          genre: 'spotify track',
+          genre: data.featuresSource === 'metadata-estimate' ? 'spotify estimate' : 'spotify track',
           audioUrl: data.previewUrl || '',
           spotifyUrl: data.spotifyUrl,
+          featuresSource: data.featuresSource,
           features: {
             energy: data.energy ?? 0.5,
             valence: data.valence ?? 0.5,
@@ -365,6 +366,11 @@ export function ClassificationLab() {
                   <span>{audioLoading && !customSource.features ? t('class.extracting', 'Extracting features...') : `${customSource.title} - ${customSource.artist}`}</span>
                   <button type="button" className="mini-button" onClick={clearCustomSource}>{t('class.clear', 'Clear')}</button>
                 </div>
+              )}
+              {customSource?.featuresSource === 'metadata-estimate' && (
+                <p className="practice-note">
+                  Spotify blocked detailed audio features for this track, so this uses a metadata-based estimate.
+                </p>
               )}
               {customSource?.spotifyUrl && <a className="mini-button class-source-link" href={customSource.spotifyUrl} target="_blank" rel="noreferrer">Open Spotify</a>}
               {sourceError && <p className="practice-note practice-note--warning">{sourceError}</p>}

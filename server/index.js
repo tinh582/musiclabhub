@@ -324,10 +324,30 @@ app.get('/api/spotify/track', async (req, res) => {
     }
 
     const token = await getAccessToken();
-    const [track, featuresPayload] = await Promise.all([
-      fetchJson(`https://api.spotify.com/v1/tracks/${trackId}`, token, { retries: 1, timeoutMs: 12000 }),
-      fetchJson(`https://api.spotify.com/v1/audio-features/${trackId}`, token, { retries: 1, timeoutMs: 12000 }),
-    ]);
+    const track = await fetchJson(
+      `https://api.spotify.com/v1/tracks/${trackId}`,
+      token,
+      { retries: 1, timeoutMs: 12000 },
+    );
+
+    let featuresPayload = null;
+    let featuresSource = 'spotify-audio-features';
+    try {
+      featuresPayload = await fetchJson(
+        `https://api.spotify.com/v1/audio-features/${trackId}`,
+        token,
+        { retries: 1, timeoutMs: 12000 },
+      );
+    } catch (featureError) {
+      featuresSource = 'metadata-estimate';
+    }
+
+    const popularity = track.popularity ?? 62;
+    const explicit = track.explicit ? 1 : 0;
+    const durationMinutes = Math.max(1, (track.duration_ms || 210000) / 60000);
+    const estimateEnergy = Math.min(0.92, Math.max(0.22, 0.34 + (popularity / 100) * 0.38 + explicit * 0.08));
+    const estimateValence = Math.min(0.88, Math.max(0.18, 0.64 - explicit * 0.08 + Math.sin(durationMinutes) * 0.08));
+    const estimateDanceability = Math.min(0.9, Math.max(0.24, 0.42 + (popularity / 100) * 0.28 - Math.max(0, durationMinutes - 4) * 0.03));
 
     res.json({
       id: track.id,
@@ -336,12 +356,13 @@ app.get('/api/spotify/track', async (req, res) => {
       album: track.album?.name || 'Spotify',
       spotifyUrl: track.external_urls?.spotify,
       previewUrl: track.preview_url,
-      popularity: track.popularity ?? 62,
-      energy: featuresPayload.energy ?? 0.5,
-      valence: featuresPayload.valence ?? 0.5,
-      danceability: featuresPayload.danceability ?? 0.5,
-      tempo: featuresPayload.tempo ?? 96,
-      collaborative: featuresPayload.liveness ?? 0.45,
+      popularity,
+      featuresSource,
+      energy: featuresPayload?.energy ?? estimateEnergy,
+      valence: featuresPayload?.valence ?? estimateValence,
+      danceability: featuresPayload?.danceability ?? estimateDanceability,
+      tempo: featuresPayload?.tempo ?? 96,
+      collaborative: featuresPayload?.liveness ?? 0.45,
     });
   } catch (error) {
     res.status(500).json({ error: error.message || 'Server error.' });
