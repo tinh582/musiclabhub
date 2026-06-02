@@ -314,13 +314,14 @@ export function RecommendationStudio() {
           type: 'genre',
         }));
 
-        if (artistSeeds.length) {
-          setSeedOptions(artistSeeds);
-          setSeedSource('artist');
-          setSeedIndex(0);
-        } else if (genreSeeds.length) {
-          setSeedOptions(genreSeeds);
-          setSeedSource('genre');
+        const combinedSeeds = [
+          ...artistSeeds,
+          ...(genreSeeds.length ? genreSeeds : SPOTIFY_SEEDS.slice(0, 8)),
+        ];
+
+        if (combinedSeeds.length) {
+          setSeedOptions(combinedSeeds);
+          setSeedSource(artistSeeds.length && genreSeeds.length ? 'mixed' : artistSeeds.length ? 'artist' : 'genre');
           setSeedIndex(0);
         } else {
           setSeedOptions(SPOTIFY_SEEDS);
@@ -717,7 +718,7 @@ export function RecommendationStudio() {
               <div className="seed-grid">
                 {seedOptions.map((seed, index) => (
                   <button
-                    key={seed.label}
+                    key={`${seed.type || 'seed'}-${seed.label}`}
                     type="button"
                     className={`target-chip${index === seedIndex ? ' active' : ''}`}
                     onClick={() => setSeedIndex(index)}
@@ -729,7 +730,9 @@ export function RecommendationStudio() {
               <p className="muted" style={{ marginTop: 10 }}>
                 {seedSource === 'artist'
                   ? t('rec.seed.artist', 'Seeded from your top Spotify artists.')
-                  : t('rec.seed.genre', 'Seeded from Spotify genres.')}
+                  : seedSource === 'mixed'
+                    ? t('rec.seed.mixed', 'Seeded from your top Spotify artists and genres.')
+                    : t('rec.seed.genre', 'Seeded from Spotify genres.')}
               </p>
             </div>
 
