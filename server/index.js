@@ -120,6 +120,12 @@ async function fetchJson(url, token, options = {}) {
   throw new Error(`Spotify request failed (429) for ${url}: Too many requests`);
 }
 
+function isSpotifyAuthError(error) {
+  const message = String(error?.message || '');
+  return message.includes('Spotify request failed (401)')
+    || message.includes('Spotify request failed (403)');
+}
+
 app.get('/api/health', (req, res) => {
   res.json({ ok: true });
 });
@@ -251,10 +257,25 @@ app.get('/api/spotify/top-tracks', async (req, res) => {
     const limit = Math.min(Number(req.query.limit || 20), 50);
     const timeRange = req.query.timeRange || 'medium_term';
 
-    const topTracks = await fetchJson(
-      `https://api.spotify.com/v1/me/top/tracks?limit=${limit}&time_range=${timeRange}`,
-      userToken,
-    );
+    let topTracks;
+    try {
+      topTracks = await fetchJson(
+        `https://api.spotify.com/v1/me/top/tracks?limit=${limit}&time_range=${timeRange}`,
+        userToken,
+      );
+    } catch (error) {
+      if (isSpotifyAuthError(error)) {
+        res.json({
+          tracks: [],
+          meta: {
+            source: 'fallback',
+            reason: 'spotify-user-token-unavailable',
+          },
+        });
+        return;
+      }
+      throw error;
+    }
 
     const tracks = topTracks.items || [];
     const trackIds = tracks.map((track) => track.id).filter(Boolean);
@@ -378,10 +399,26 @@ app.get('/api/spotify/seeds', async (req, res) => {
       return;
     }
 
-    const topArtists = await fetchJson(
-      'https://api.spotify.com/v1/me/top/artists?limit=12&time_range=medium_term',
-      userToken,
-    );
+    let topArtists;
+    try {
+      topArtists = await fetchJson(
+        'https://api.spotify.com/v1/me/top/artists?limit=12&time_range=medium_term',
+        userToken,
+      );
+    } catch (error) {
+      if (isSpotifyAuthError(error)) {
+        res.json({
+          artists: [],
+          genres: [],
+          meta: {
+            source: 'fallback',
+            reason: 'spotify-user-token-unavailable',
+          },
+        });
+        return;
+      }
+      throw error;
+    }
 
     const artists = (topArtists.items || []).map((artist) => ({
       id: artist.id,
@@ -414,7 +451,15 @@ app.get('/api/spotify/recommendations', async (req, res) => {
   try {
     const authHeader = req.headers.authorization || '';
     const userToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-    const token = userToken || await getAccessToken();
+    let appToken = null;
+    async function getAppToken() {
+      if (!appToken) {
+        appToken = await getAccessToken();
+      }
+      return appToken;
+    }
+
+    const token = userToken || await getAppToken();
     const seedGenre = req.query.seedGenre || 'pop';
     const seedArtistName = req.query.seedArtistName || '';
     const energy = Number(req.query.energy || 0.7);
@@ -442,17 +487,30 @@ app.get('/api/spotify/recommendations', async (req, res) => {
       });
 
       try {
-        return await fetchJson(
-          `https://api.spotify.com/v1/search?${params.toString()}`,
-          token,
-          { retries: 1, baseDelayMs: 400, timeoutMs: 12000 },
-        );
+        try {
+          return await fetchJson(
+            `https://api.spotify.com/v1/search?${params.toString()}`,
+            token,
+            { retries: 1, baseDelayMs: 400, timeoutMs: 12000 },
+          );
+        } catch (error) {
+          if (userToken && isSpotifyAuthError(error)) {
+            const fallbackToken = await getAppToken();
+            return fetchJson(
+              `https://api.spotify.com/v1/search?${params.toString()}`,
+              fallbackToken,
+              { retries: 1, baseDelayMs: 400, timeoutMs: 12000 },
+            );
+          }
+          throw error;
+        }
       } catch (error) {
         if (String(error.message || '').includes('Invalid limit')) {
           const fallbackParams = new URLSearchParams({ q, type: 'track' });
+          const fallbackToken = userToken && !isSpotifyAuthError(error) ? token : await getAppToken();
           return fetchJson(
             `https://api.spotify.com/v1/search?${fallbackParams.toString()}`,
-            token,
+            fallbackToken,
             { retries: 1, baseDelayMs: 400, timeoutMs: 12000 },
           );
         }
