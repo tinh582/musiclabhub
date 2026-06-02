@@ -16,7 +16,7 @@ const app = express();
 const port = Number(process.env.PORT || 5174);
 const clientOrigin = process.env.CLIENT_ORIGIN || 'https://localhost:5173';
 const redirectUri = process.env.SPOTIFY_REDIRECT_URI || 'https://localhost:5173/callback';
-const authScopes = process.env.SPOTIFY_SCOPES || 'user-read-email user-top-read';
+const authScopes = process.env.SPOTIFY_SCOPES || '-user-read-email usertop-read';
 const transcriptionServiceUrl = process.env.TRANSCRIPTION_SERVICE_URL || 'http://127.0.0.1:8000';
 const useHttps = process.env.USE_HTTPS === 'true';
 
@@ -118,12 +118,6 @@ async function fetchJson(url, token, options = {}) {
   }
 
   throw new Error(`Spotify request failed (429) for ${url}: Too many requests`);
-}
-
-function isSpotifyAuthError(error) {
-  const message = String(error?.message || '');
-  return message.includes('Spotify request failed (401)')
-    || message.includes('Spotify request failed (403)');
 }
 
 app.get('/api/health', (req, res) => {
@@ -257,25 +251,10 @@ app.get('/api/spotify/top-tracks', async (req, res) => {
     const limit = Math.min(Number(req.query.limit || 20), 50);
     const timeRange = req.query.timeRange || 'medium_term';
 
-    let topTracks;
-    try {
-      topTracks = await fetchJson(
-        `https://api.spotify.com/v1/me/top/tracks?limit=${limit}&time_range=${timeRange}`,
-        userToken,
-      );
-    } catch (error) {
-      if (isSpotifyAuthError(error)) {
-        res.json({
-          tracks: [],
-          meta: {
-            source: 'fallback',
-            reason: 'spotify-user-token-unavailable',
-          },
-        });
-        return;
-      }
-      throw error;
-    }
+    const topTracks = await fetchJson(
+      `https://api.spotify.com/v1/me/top/tracks?limit=${limit}&time_range=${timeRange}`,
+      userToken,
+    );
 
     const tracks = topTracks.items || [];
     const trackIds = tracks.map((track) => track.id).filter(Boolean);
@@ -399,26 +378,10 @@ app.get('/api/spotify/seeds', async (req, res) => {
       return;
     }
 
-    let topArtists;
-    try {
-      topArtists = await fetchJson(
-        'https://api.spotify.com/v1/me/top/artists?limit=12&time_range=medium_term',
-        userToken,
-      );
-    } catch (error) {
-      if (isSpotifyAuthError(error)) {
-        res.json({
-          artists: [],
-          genres: [],
-          meta: {
-            source: 'fallback',
-            reason: 'spotify-user-token-unavailable',
-          },
-        });
-        return;
-      }
-      throw error;
-    }
+    const topArtists = await fetchJson(
+      'https://api.spotify.com/v1/me/top/artists?limit=12&time_range=medium_term',
+      userToken,
+    );
 
     const artists = (topArtists.items || []).map((artist) => ({
       id: artist.id,
@@ -451,15 +414,7 @@ app.get('/api/spotify/recommendations', async (req, res) => {
   try {
     const authHeader = req.headers.authorization || '';
     const userToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-    let appToken = null;
-    async function getAppToken() {
-      if (!appToken) {
-        appToken = await getAccessToken();
-      }
-      return appToken;
-    }
-
-    const token = userToken || await getAppToken();
+    const token = userToken || await getAccessToken();
     const seedGenre = req.query.seedGenre || 'pop';
     const seedArtistName = req.query.seedArtistName || '';
     const energy = Number(req.query.energy || 0.7);
@@ -487,30 +442,17 @@ app.get('/api/spotify/recommendations', async (req, res) => {
       });
 
       try {
-        try {
-          return await fetchJson(
-            `https://api.spotify.com/v1/search?${params.toString()}`,
-            token,
-            { retries: 1, baseDelayMs: 400, timeoutMs: 12000 },
-          );
-        } catch (error) {
-          if (userToken && isSpotifyAuthError(error)) {
-            const fallbackToken = await getAppToken();
-            return fetchJson(
-              `https://api.spotify.com/v1/search?${params.toString()}`,
-              fallbackToken,
-              { retries: 1, baseDelayMs: 400, timeoutMs: 12000 },
-            );
-          }
-          throw error;
-        }
+        return await fetchJson(
+          `https://api.spotify.com/v1/search?${params.toString()}`,
+          token,
+          { retries: 1, baseDelayMs: 400, timeoutMs: 12000 },
+        );
       } catch (error) {
         if (String(error.message || '').includes('Invalid limit')) {
           const fallbackParams = new URLSearchParams({ q, type: 'track' });
-          const fallbackToken = userToken && !isSpotifyAuthError(error) ? token : await getAppToken();
           return fetchJson(
             `https://api.spotify.com/v1/search?${fallbackParams.toString()}`,
-            fallbackToken,
+            token,
             { retries: 1, baseDelayMs: 400, timeoutMs: 12000 },
           );
         }
