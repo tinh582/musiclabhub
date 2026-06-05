@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocale } from '../i18n/LocaleProvider';
-import { useOutletContext } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 
 function clamp(value, min, max) {
@@ -198,6 +198,7 @@ const API_BASE = import.meta.env.VITE_API_BASE || 'https://localhost:5174';
 export function RecommendationStudio() {
   const outletContext = useOutletContext();
   const currentUser = outletContext?.currentUser || null;
+  const navigate = useNavigate();
   const [savedSets, setSavedSets] = useState([]);
   const [seedIndex, setSeedIndex] = useState(DEFAULTS.seedIndex);
   const [mood, setMood] = useState(DEFAULTS.mood);
@@ -275,7 +276,7 @@ export function RecommendationStudio() {
     let cancelled = false;
 
     async function loadSeeds() {
-      if (!spotifyToken) {
+      if (!currentUser || !spotifyToken) {
         setSeedOptions(SPOTIFY_SEEDS);
         setSeedSource('genre');
         return;
@@ -337,13 +338,13 @@ export function RecommendationStudio() {
     return () => {
       cancelled = true;
     };
-  }, [spotifyToken]);
+  }, [currentUser, spotifyToken]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadPreference() {
-      if (!spotifyToken) {
+      if (!currentUser || !spotifyToken) {
         setPreference(null);
         return;
       }
@@ -437,7 +438,7 @@ export function RecommendationStudio() {
     return () => {
       cancelled = true;
     };
-  }, [spotifyToken]);
+  }, [currentUser, spotifyToken]);
 
   useEffect(() => {
     const requestId = recommendationRequestId.current + 1;
@@ -446,6 +447,22 @@ export function RecommendationStudio() {
     const timeoutId = setTimeout(() => controller.abort(), 20000);
 
     async function loadSpotifyTracks() {
+      if (!currentUser) {
+        setSpotifyLoading(false);
+        setSpotifyError(t('rec.loginRequiredSpotify', 'Login required to use Spotify recommendations.'));
+        setSpotifyTracks([]);
+        setSpotifyMeta(null);
+        return;
+      }
+
+      if (!spotifyToken) {
+        setSpotifyLoading(false);
+        setSpotifyError(t('rec.spotifyConnectRequired', 'Connect Spotify to load recommendations.'));
+        setSpotifyTracks([]);
+        setSpotifyMeta(null);
+        return;
+      }
+
       setSpotifyLoading(true);
       setSpotifyError('');
       const seed = seedOptions[seedIndex] || SPOTIFY_SEEDS[0];
@@ -461,9 +478,7 @@ export function RecommendationStudio() {
       try {
         const response = await fetch(
           `${API_BASE}/api/spotify/recommendations?${params.toString()}`,
-          spotifyToken
-            ? { headers: { Authorization: `Bearer ${spotifyToken}` }, signal: controller.signal }
-            : { signal: controller.signal },
+          { headers: { Authorization: `Bearer ${spotifyToken}` }, signal: controller.signal },
         );
         const data = await response.json();
         if (!response.ok) {
@@ -494,7 +509,7 @@ export function RecommendationStudio() {
       controller.abort();
       clearTimeout(timeoutId);
     };
-  }, [energy, mood, seedIndex, spotifyToken, resultCount, seedOptions]);
+  }, [currentUser, energy, mood, seedIndex, spotifyToken, resultCount, seedOptions, t]);
 
   useEffect(() => {
     if (!currentUser || !hasLoadedState) return;
@@ -640,6 +655,11 @@ export function RecommendationStudio() {
   };
 
   const handleConnectSpotify = () => {
+    if (!currentUser) {
+      navigate('/login');
+      return;
+    }
+
     window.location.href = `${API_BASE}/api/spotify/login`;
   };
 
@@ -680,7 +700,9 @@ export function RecommendationStudio() {
             <h4>{t('rec.spotAuth.title', 'Audio features')}</h4>
           </div>
           <p className="muted">
-            {spotifyToken
+            {!currentUser
+              ? t('rec.spotAuth.loginFirst', 'Login before connecting Spotify for recommendations.')
+              : spotifyToken
               ? (spotifyMeta?.audioFeatures ? t('rec.spotAuth.connected', 'Spotify connected. Audio features enabled.') : t('rec.spotAuth.connectedLimited', 'Spotify connected, but audio features unavailable.'))
               : t('rec.spotAuth.disconnected', 'Connect Spotify to unlock full audio features.')}
           </p>
@@ -688,7 +710,9 @@ export function RecommendationStudio() {
             <p className="muted">{t('rec.spotAuth.loading', 'Building your personal model...')}</p>
           ) : null}
           <div className="auth-actions">
-            {spotifyToken ? (
+            {!currentUser ? (
+              <button type="button" className="btn" onClick={handleConnectSpotify}>{t('rec.spotAuth.login', 'Login to connect Spotify')}</button>
+            ) : spotifyToken ? (
               <button type="button" className="btn" onClick={handleDisconnectSpotify}>{t('rec.spotAuth.disconnect', 'Disconnect Spotify')}</button>
             ) : (
               <button type="button" className="btn" onClick={handleConnectSpotify}>{t('rec.spotAuth.connect', 'Connect Spotify')}</button>
