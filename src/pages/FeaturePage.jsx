@@ -91,20 +91,6 @@ export function FeaturePage() {
       </section>
 
       <section className="content-grid content-grid--two">
-        <article className="panel">
-          <div className="section-heading">
-            <p className="eyebrow">{t('feature.stack.eyebrow', 'Suggested stack')}</p>
-            <h4>{t('feature.stack.title', 'Use these building blocks as the technical base for the module.')}</h4>
-          </div>
-          <div className="tag-row">
-            {page.stack.map((item) => (
-              <span key={item} className="tag">
-                {item}
-              </span>
-            ))}
-          </div>
-        </article>
-
         <article className="panel panel--accent">
           <div className="section-heading">
             <p className="eyebrow">{t('feature.evaluation.eyebrow', 'Evaluation focus')}</p>

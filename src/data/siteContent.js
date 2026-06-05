@@ -19,25 +19,6 @@ export function buildSiteContent(t) {
     { label: t('dashboard.stats.title4', 'Best thesis fit'), value: t('dashboard.stats.value4', 'Hybrid music platform') },
   ];
 
-  const roadmap = [
-    {
-      title: t('roadmap.discovery', 'Discovery'),
-      text: t('roadmap.discovery.text', 'Define the research problem, dataset choice, and evaluation method for the selected music feature.'),
-    },
-    {
-      title: t('roadmap.prototype', 'Prototype'),
-      text: t('roadmap.prototype.text', 'Build the dashboard, navigation, feature pages, and one or two working ML or audio demos.'),
-    },
-    {
-      title: t('roadmap.integration', 'Integration'),
-      text: t('roadmap.integration.text', 'Connect the pages to one shared layout and one consistent visual language for the final website.'),
-    },
-    {
-      title: t('roadmap.presentation', 'Presentation'),
-      text: t('roadmap.presentation.text', 'Package the demo, write the report, and show how the site supports a complete graduation project.'),
-    },
-  ];
-
   const systemLayers = [
     {
       title: t('system.frontend', 'Frontend'),
@@ -494,7 +475,6 @@ export function buildSiteContent(t) {
   return {
     navigationItems,
     topStats,
-    roadmap,
     systemLayers,
     featurePages,
     dashboardCards,

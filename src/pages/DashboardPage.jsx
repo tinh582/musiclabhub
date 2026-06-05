@@ -3,19 +3,16 @@ import { Link } from 'react-router-dom';
 import { useLocale } from '../i18n/LocaleProvider';
 import { useSiteContent } from '../hooks/useSiteContent';
 import { CATALOG, buildCatalog } from '../data/catalog';
-import { useAudioFeatures } from '../hooks/useAudioFeatures';
-import { formatDuration } from '../utils/audioFeatures';
 
 export function DashboardPage() {
   const { t } = useLocale();
-  const { dashboardCards, roadmap, systemLayers, topStats } = useSiteContent();
+  const { dashboardCards, systemLayers, topStats } = useSiteContent();
   const audioRef = useRef(null);
   const [playingId, setPlayingId] = useState(null);
   const localizedCatalog = buildCatalog(t);
   const catalog = localizedCatalog || CATALOG;
   const [activeId, setActiveId] = useState(localizedCatalog[0]?.id || CATALOG[0]?.id || null);
   const activeTrack = (catalog.find((tt) => tt.id === activeId) || CATALOG.find((tt) => tt.id === activeId));
-  const { data: audioInfo, loading: audioLoading } = useAudioFeatures(activeTrack?.audioUrl);
   const genres = useMemo(() => Array.from(new Set(catalog.map((track) => track.genre))), [catalog]);
   const genreColors = ['var(--teal)', 'var(--blue)', 'var(--gold)', 'var(--coral)', '#b69cff', '#8fe388', '#ffb3d1', '#9fe7ff'];
   const activeGenreIndex = Math.max(0, genres.indexOf(activeTrack?.genre));
@@ -178,15 +175,6 @@ export function DashboardPage() {
               </div>
             </div>
           </div>
-          <div className="dashboard-sample-card">
-            <p className="eyebrow">{t('dashboard.mini.sample', 'Sample info')}</p>
-            <div className="dashboard-sample-grid">
-              <span>{t('dashboard.mini.duration', 'Duration')} <strong>{audioLoading || !audioInfo ? 'Loading...' : formatDuration(audioInfo.duration)}</strong></span>
-              <span>{t('dashboard.mini.peak', 'Peak')} <strong>{audioLoading || !audioInfo ? 'Loading...' : `${audioInfo.peakDb.toFixed(1)} dB`}</strong></span>
-              <span>{t('dashboard.mini.rms', 'RMS')} <strong>{audioLoading || !audioInfo ? 'Loading...' : `${audioInfo.rmsDb.toFixed(1)} dB`}</strong></span>
-              <span>{t('dashboard.mini.tempo', 'Tempo')} <strong>{audioLoading || !audioInfo ? 'Loading...' : (audioInfo.tempo ? `${audioInfo.tempo} BPM` : 'n/a')}</strong></span>
-            </div>
-          </div>
         </article>
       </section>
 
@@ -207,23 +195,6 @@ export function DashboardPage() {
           </div>
         </article>
 
-        <article className="panel panel--filled">
-          <div className="section-heading">
-            <p className="eyebrow">{t('dashboard.roadmap.eyebrow', 'Recommended build plan')}</p>
-            <h4>{t('dashboard.roadmap.title', 'A simple roadmap keeps the project achievable.')}</h4>
-          </div>
-          <div className="roadmap-list">
-            {roadmap.map((item, index) => (
-              <div key={item.title} className="roadmap-item">
-                <span className="roadmap-index">0{index + 1}</span>
-                <div>
-                  <strong>{item.title}</strong>
-                  <p>{item.text}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </article>
       </section>
 
       <section className="content-grid content-grid--two">

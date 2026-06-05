@@ -2,8 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocale } from '../i18n/LocaleProvider';
 import { useOutletContext } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
-import { useAudioFeatures } from '../hooks/useAudioFeatures';
-import { formatDuration } from '../utils/audioFeatures';
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -552,11 +550,6 @@ export function RecommendationStudio() {
     return diversified.length ? diversified : scored.slice(0, resultCount);
   }, [blockedIds, likedIds, mode, preference, profile, resultCount, spotifyTracks]);
 
-  const activeTrack = playingId
-    ? spotifyTracks.find((track) => track.id === playingId)
-    : rankedTracks[0];
-  const { data: audioInfo, loading: audioLoading } = useAudioFeatures(activeTrack?.previewUrl);
-
   const similarityResults = useMemo(() => {
     if (!similarityId) return [];
     const target = spotifyTracks.find((track) => track.id === similarityId);
@@ -823,36 +816,6 @@ export function RecommendationStudio() {
 
         <div className="recommendation-stack">
           <audio ref={audioRef} onEnded={() => setPlayingId(null)} />
-          <article className="panel">
-            <div className="section-heading">
-              <p className="eyebrow">{t('rec.sample.eyebrow', 'Sample info')}</p>
-              <h4>{activeTrack ? activeTrack.title : t('rec.summary.noTrack', 'No track selected')}</h4>
-            </div>
-            <div style={{ display: 'grid', gap: 6, marginTop: 6 }}>
-              <span style={{ color: 'var(--muted)' }}>{t('rec.label.artist', 'Artist')}: {activeTrack ? activeTrack.artist : t('rec.na', 'n/a')}</span>
-              <span style={{ color: 'var(--muted)' }}>{t('rec.label.album', 'Album')}: {activeTrack ? activeTrack.album : t('rec.na', 'n/a')}</span>
-              <span style={{ color: 'var(--muted)' }}>{t('rec.label.popularity', 'Popularity')}: {activeTrack ? activeTrack.popularity : t('rec.na', 'n/a')}</span>
-              <span style={{ color: 'var(--muted)' }}>{t('rec.label.preview', 'Preview')}: {activeTrack?.previewUrl ? t('rec.preview.available', 'Available') : t('rec.preview.notAvailable', 'Not available')}</span>
-              {activeTrack?.spotifyUrl ? (
-                <span style={{ color: 'var(--muted)' }}>
-                  <a href={activeTrack.spotifyUrl} target="_blank" rel="noreferrer">{t('rec.openSpotify', 'Open in Spotify')}</a>
-                </span>
-              ) : null}
-              <span style={{ color: 'var(--muted)' }}>{t('rec.label.energy', 'Energy')}: {activeTrack ? formatPercent(activeTrack.energy) : t('rec.na', 'n/a')}</span>
-              <span style={{ color: 'var(--muted)' }}>{t('rec.label.valence', 'Valence')}: {activeTrack ? formatPercent(activeTrack.valence) : t('rec.na', 'n/a')}</span>
-              <span style={{ color: 'var(--muted)' }}>{t('rec.label.dance', 'Danceability')}: {activeTrack ? formatPercent(activeTrack.danceability) : t('rec.na', 'n/a')}</span>
-              <span style={{ color: 'var(--muted)' }}>{t('rec.label.duration', 'Duration')}: {audioLoading || !audioInfo ? t('rec.loadingShort', 'Loading...') : formatDuration(audioInfo.duration)}</span>
-              <span style={{ color: 'var(--muted)' }}>{t('rec.label.tempo', 'Tempo')}: {audioLoading || !audioInfo ? t('rec.loadingShort', 'Loading...') : (audioInfo.tempo ? `${audioInfo.tempo} BPM` : t('rec.na', 'n/a'))}</span>
-            </div>
-            <div style={{ marginTop: 12 }} className="panel panel--filled">
-              <div className="section-heading">
-                <p className="eyebrow">{t('rec.aiMood.eyebrow', 'AI mood label')}</p>
-                <h4>{activeTrack ? moodLabelFromFeatures(activeTrack) : t('rec.na', 'n/a')}</h4>
-              </div>
-              <p className="muted">{buildSummary(activeTrack, profile)}</p>
-            </div>
-          </article>
-
           <article className="panel panel--filled">
             <div className="section-heading">
               <p className="eyebrow">{t('rec.playlist.eyebrow', 'Recommended playlist')}</p>
