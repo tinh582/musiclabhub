@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { CATALOG, buildCatalog } from '../data/catalog';
 import { useLocale } from '../i18n/LocaleProvider';
+import { useAudioFeatures } from '../hooks/useAudioFeatures';
 
 export function EffectsLab() {
   const { t } = useLocale();
@@ -17,6 +18,7 @@ export function EffectsLab() {
   const [downloadUrl, setDownloadUrl] = useState(null);
   const [audioError, setAudioError] = useState(null);
   const [audioKey, setAudioKey] = useState(0);
+  const { data: analysis, loading: analysisLoading } = useAudioFeatures(fileUrl);
 
   const audioRef = useRef(null);
   const ctxRef = useRef(null);
@@ -243,6 +245,19 @@ export function EffectsLab() {
     setIsRecording(false);
   }
 
+  function applySmartSettings() {
+    if (!analysis) return;
+    const brightness = Math.min(1, analysis.spectralCentroid / 4500);
+    const noisy = Math.min(1, analysis.spectralFlatness * 2.5);
+    const compressed = Math.min(1, Math.max(0, (8 - analysis.dynamicRangeDb) / 8));
+    setCutoff(Math.round(1800 + brightness * 7200));
+    setWet(Math.max(0.12, Math.min(0.58, 0.2 + (1 - noisy) * 0.24)));
+    setDelayTime(analysis.tempo ? Math.max(0.12, Math.min(0.6, 30 / analysis.tempo)) : 0.25);
+    setFeedback(Math.max(0.12, Math.min(0.48, 0.18 + (1 - compressed) * 0.18)));
+    setDistortion(Math.max(0, Math.min(0.22, noisy * 0.08)));
+    setReverbSize(Math.max(0.8, Math.min(4.5, 1.2 + analysis.dynamicRangeDb / 8)));
+  }
+
   // helpers
   function makeDistortionCurve(amount) {
     const k = typeof amount === 'number' ? amount : 50;
@@ -288,6 +303,9 @@ export function EffectsLab() {
           {!isRecording && <button className="btn" onClick={startRecording}>Record</button>}
           {isRecording && <button className="btn" onClick={stopRecording}>Stop</button>}
           {downloadUrl && <a className="btn" href={downloadUrl} download="processed.webm">Download</a>}
+          <button className="btn" onClick={applySmartSettings} disabled={!analysis || analysisLoading}>
+            {analysisLoading ? 'Analyzing...' : 'Smart settings'}
+          </button>
         </div>
       </div>
 
@@ -314,6 +332,14 @@ export function EffectsLab() {
           onError={() => setAudioError('Audio failed to load. Check the sample URL or file.')} 
         />
         {audioError ? <p style={{ marginTop: 8, color: 'var(--coral)' }}>{audioError}</p> : null}
+        {analysis ? (
+          <div className="profile-strip" style={{ marginTop: 12 }}>
+            <article className="profile-card"><p>Estimated key</p><strong>{analysis.estimatedKey}</strong></article>
+            <article className="profile-card"><p>Brightness</p><strong>{Math.round(analysis.spectralCentroid)} Hz</strong></article>
+            <article className="profile-card"><p>Dynamic range</p><strong>{analysis.dynamicRangeDb.toFixed(1)} dB</strong></article>
+            <article className="profile-card"><p>Noisiness</p><strong>{Math.round(analysis.spectralFlatness * 100)}%</strong></article>
+          </div>
+        ) : null}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
           <div>

@@ -26,6 +26,52 @@ function noteNameToMidi(noteName) {
   return base + (sharp ? 1 : 0) + (octave + 1) * 12;
 }
 
+const STYLE_MODELS = {
+  ambient: {
+    scale: [0, 2, 4, 7, 9],
+    transitions: [[0, 4], [2, 3], [4, 3], [7, 5], [9, 2], [12, 2], [-3, 1], [-5, 1]],
+  },
+  upbeat: {
+    scale: [0, 2, 4, 7, 9],
+    transitions: [[2, 5], [4, 4], [7, 5], [12, 3], [-2, 3], [-5, 2], [0, 1]],
+  },
+  jazz: {
+    scale: [0, 2, 3, 5, 7, 9, 10],
+    transitions: [[2, 3], [3, 4], [5, 3], [7, 5], [10, 2], [-2, 4], [-3, 3], [-5, 2]],
+  },
+  minimalist: {
+    scale: [0, 2, 7, 9],
+    transitions: [[0, 6], [2, 5], [7, 4], [12, 2], [-5, 3], [-7, 2]],
+  },
+};
+
+function weightedSample(entries, temperature) {
+  const adjusted = entries.map(([value, weight]) => ({
+    value,
+    weight: Math.pow(weight, 1 / Math.max(0.15, temperature)),
+  }));
+  const total = adjusted.reduce((sum, entry) => sum + entry.weight, 0);
+  let cursor = Math.random() * total;
+  for (const entry of adjusted) {
+    cursor -= entry.weight;
+    if (cursor <= 0) return entry.value;
+  }
+  return adjusted[adjusted.length - 1].value;
+}
+
+function snapToScale(midi, root, scale) {
+  let best = midi;
+  let bestDistance = Infinity;
+  for (let candidate = midi - 6; candidate <= midi + 6; candidate += 1) {
+    const pitchClass = ((candidate - root) % 12 + 12) % 12;
+    if (scale.includes(pitchClass) && Math.abs(candidate - midi) < bestDistance) {
+      best = candidate;
+      bestDistance = Math.abs(candidate - midi);
+    }
+  }
+  return best;
+}
+
 export function ComposerLab() {
   const [seedNote, setSeedNote] = useState('C');
   const [seedOctave, setSeedOctave] = useState(4);
@@ -51,29 +97,21 @@ export function ComposerLab() {
     const startMidi = noteNameToMidi(seed);
     const generated = [{ midi: startMidi, duration: 0.5, note: midiToNoteName(startMidi) }];
 
-    // style-specific intervals and rules
-    const intervals = {
-      ambient: [0, 2, 5, 7, 12, -3, -5, -7],
-      upbeat: [0, 3, 4, 7, 12, -2, -4],
-      jazz: [0, -2, 3, 5, 7, 12, 2, -3],
-      minimalist: [0, 2, 7, 12, -5],
-    };
-
-    const chosen = intervals[style] || intervals.ambient;
+    const model = STYLE_MODELS[style] || STYLE_MODELS.ambient;
     let current = startMidi;
 
     for (let i = 1; i < length; i += 1) {
-      const idx = Math.floor(Math.random() * chosen.length);
-      const interval = chosen[idx];
-      let next = current + interval;
+      const interval = weightedSample(model.transitions, temperature);
+      let next = snapToScale(current + interval, startMidi, model.scale);
 
       // constrain to range C3-C6
       while (next < 36) next += 12;
       while (next > 84) next -= 12;
 
-      // temperature: higher temp = more varied duration
-      let dur = 0.25 + Math.random() * (0.5 * temperature);
-      dur = Math.round(dur * 4) / 4; // quantize to sixteenths
+      const durationChoices = temperature > 0.7
+        ? [[0.25, 3], [0.5, 4], [0.75, 2], [1, 1]]
+        : [[0.25, 1], [0.5, 6], [0.75, 2], [1, 2]];
+      const dur = weightedSample(durationChoices, temperature);
 
       generated.push({ midi: next, duration: dur, note: midiToNoteName(next) });
       current = next;
@@ -386,7 +424,7 @@ export function ComposerLab() {
               <strong>{t('composer.tip.style', 'Style:')}</strong> {t('composer.tip.style', 'Phong cach: Dinh nghia tap khoang. Ambient em diu, Upbeat nhay, Jazz co chromatic, Minimalist lap lai.')}
             </p>
             <p className="practice-note">
-              <strong>{t('composer.tip.temp', 'Temperature:')}</strong> {t('composer.tip.temp', 'Nhiet do: Dieu chinh do bien thien truong do (0.1 = on dinh, 1.0 = da dang).')}
+              <strong>{t('composer.tip.temp', 'Temperature:')}</strong> Controls probabilistic interval and rhythm sampling. Lower values favor common transitions; higher values explore less likely ones.
             </p>
             <p className="practice-note">
               <strong>{t('composer.tip.export', 'Export:')}</strong> {t('composer.tip.export', 'Xuat: MusicXML va MIDI dung tot voi phan mem soan nhac va DAW.')}

@@ -115,6 +115,19 @@ export function PracticeRoom() {
     if (score >= 40) return t('practice.hint.adjust', 'Keep adjusting');
     return t('practice.hint.noPitch', 'No stable pitch yet');
   }, [score, t]);
+  const coaching = useMemo(() => {
+    if (!sessionLog.length) return { accuracy: 0, stability: 0, feedback: 'Start a session to receive coaching.' };
+    const accuracy = Math.round(sessionLog.reduce((sum, entry) => sum + entry.score, 0) / sessionLog.length);
+    const frequencies = sessionLog.map((entry) => entry.frequency);
+    const mean = frequencies.reduce((sum, value) => sum + value, 0) / frequencies.length;
+    const deviation = Math.sqrt(frequencies.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / frequencies.length);
+    const stability = Math.max(0, Math.round(100 - Math.min(100, (deviation / Math.max(mean, 1)) * 900)));
+    let feedback = 'Pitch is moving around. Hold the note with steadier breath and support.';
+    if (accuracy >= 88 && stability >= 82) feedback = 'Accurate and stable. Try sustaining the note for longer.';
+    else if (accuracy >= 75) feedback = 'Pitch center is close. Slow the adjustment as you approach the target.';
+    else if (stability >= 82) feedback = 'The note is stable but centered away from the target. Adjust gradually.';
+    return { accuracy, stability, feedback };
+  }, [sessionLog]);
 
   useEffect(() => {
     return () => {
@@ -355,6 +368,15 @@ export function PracticeRoom() {
             <p className="eyebrow">{t('practice.score', 'Session score')}</p>
             <strong>{score}</strong>
             <p>{targetHint}</p>
+          </article>
+
+          <article className="practice-card">
+            <p className="eyebrow">Adaptive coach</p>
+            <div className="practice-log">
+              <div className="practice-log__item"><strong>Accuracy</strong><span>{coaching.accuracy}%</span></div>
+              <div className="practice-log__item"><strong>Stability</strong><span>{coaching.stability}%</span></div>
+            </div>
+            <p className="practice-note">{coaching.feedback}</p>
           </article>
 
           <article className="practice-card">
