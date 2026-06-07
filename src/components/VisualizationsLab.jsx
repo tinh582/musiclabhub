@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocale } from '../i18n/LocaleProvider';
+import { useAudioFeatures } from '../hooks/useAudioFeatures';
 
 function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v));
@@ -20,6 +21,7 @@ export function VisualizationsLab() {
 
   const [audioUrlInput, setAudioUrlInput] = useState('');
   const [loadedLabel, setLoadedLabel] = useState('No audio loaded');
+  const [sourceUrl, setSourceUrl] = useState('');
   const [playing, setPlaying] = useState(false);
   const [peak, setPeak] = useState(0);
   const [vu, setVu] = useState(0);
@@ -34,6 +36,7 @@ export function VisualizationsLab() {
   const [spectroSpeed, setSpectroSpeed] = useState(1);
   const [spectroDecay, setSpectroDecay] = useState(0.03);
   const [spectroContrast, setSpectroContrast] = useState(1);
+  const { data: audioProfile, loading: profileLoading } = useAudioFeatures(sourceUrl);
 
   const sampleTracks = [
     { label: 'Sample 1', url: '/audio/sample1.mp3' },
@@ -270,6 +273,7 @@ export function VisualizationsLab() {
     objectUrlRef.current = url.startsWith('blob:') ? url : null;
     audio.src = url;
     audio.load();
+    setSourceUrl(url);
     setLoadedLabel(label);
     setPeak(0);
     setVu(0);
@@ -295,6 +299,18 @@ export function VisualizationsLab() {
     const track = sampleTracks.find((t) => t.url === value);
     if (!track) return;
     loadObjectUrl(track.url, track.label);
+  }
+
+  function applyIntelligentView() {
+    if (!audioProfile) return;
+    const brightness = clamp(audioProfile.spectralCentroid / 5000, 0, 1);
+    const noisiness = clamp(audioProfile.spectralFlatness * 3, 0, 1);
+    setFftSize(brightness > 0.55 ? 4096 : 2048);
+    setSmoothing(clamp(0.9 - noisiness * 0.35, 0.5, 0.9));
+    setSpectrumBars(Math.round(54 + brightness * 96));
+    setSpectrumFloor(clamp(noisiness * 0.16, 0.02, 0.22));
+    setSpectroContrast(clamp(1.55 - noisiness * 0.45, 0.85, 1.7));
+    setOscZoom(clamp(0.28 + audioProfile.dynamicRangeDb / 80, 0.25, 0.46));
   }
 
   const peakPct = clamp(Math.round(peak * 100), 0, 100);
@@ -335,6 +351,9 @@ export function VisualizationsLab() {
               </button>
               <button type="button" className="button button--ghost" onClick={pausePlayback}>{t('viz.pause', 'Pause')}</button>
               <button type="button" className="button button--ghost" onClick={stopPlayback}>{t('viz.stop', 'Stop')}</button>
+              <button type="button" className="button button--ghost" onClick={applyIntelligentView} disabled={!audioProfile || profileLoading}>
+                {profileLoading ? 'Analyzing...' : 'AI view'}
+              </button>
             </div>
             <p className="practice-note">{t('viz.loaded', 'Loaded')}: {loadedLabel}</p>
           </div>
@@ -464,6 +483,18 @@ export function VisualizationsLab() {
             </div>
             <strong>{peakPct}%</strong>
           </div>
+
+          {audioProfile ? (
+            <div className="meter-block" style={{ marginTop: 14 }}>
+              <p className="eyebrow">Audio interpretation</p>
+              <div className="practice-log">
+                <div className="practice-log__item"><strong>Key</strong><span>{audioProfile.estimatedKey}</span></div>
+                <div className="practice-log__item"><strong>Tempo</strong><span>{audioProfile.tempo ? `${audioProfile.tempo} BPM` : 'n/a'}</span></div>
+                <div className="practice-log__item"><strong>Brightness</strong><span>{Math.round(audioProfile.spectralCentroid)} Hz</span></div>
+                <div className="practice-log__item"><strong>Texture</strong><span>{audioProfile.spectralFlatness > 0.22 ? 'Noisy' : audioProfile.spectralCentroid > 2600 ? 'Bright' : 'Warm'}</span></div>
+              </div>
+            </div>
+          ) : null}
 
           <div className="meter-block" style={{ marginTop: 16 }}>
             <p className="eyebrow">VU Meter (RMS)</p>

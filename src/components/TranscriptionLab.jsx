@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import { useLocale } from '../i18n/LocaleProvider';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://localhost:5174';
@@ -42,6 +42,36 @@ function frequencyToNoteName(frequency) {
   const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   const noteName = noteNames[((roundedNumber % 12) + 12) % 12];
   return `${noteName}${octave}`;
+}
+
+function inferMelodicProfile(notes) {
+  const pitched = notes.filter((note) => note.frequency && note.kind !== 'rest');
+  if (!pitched.length) return null;
+  const pitchClasses = new Array(12).fill(0);
+  const midiValues = pitched.map((note) => {
+    const midi = Math.round(69 + 12 * Math.log2(note.frequency / 440));
+    pitchClasses[((midi % 12) + 12) % 12] += Number(note.duration || 0.2);
+    return midi;
+  });
+  const scales = {
+    major: [0, 2, 4, 5, 7, 9, 11],
+    minor: [0, 2, 3, 5, 7, 8, 10],
+  };
+  let best = { score: -1, root: 0, mode: 'major' };
+  for (let root = 0; root < 12; root += 1) {
+    Object.entries(scales).forEach(([mode, scale]) => {
+      const score = scale.reduce((sum, interval) => sum + pitchClasses[(root + interval) % 12], 0);
+      if (score > best.score) best = { score, root, mode };
+    });
+  }
+  const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  const total = pitchClasses.reduce((sum, value) => sum + value, 0);
+  return {
+    key: `${names[best.root]} ${best.mode}`,
+    confidence: total ? best.score / total : 0,
+    range: Math.max(...midiValues) - Math.min(...midiValues),
+    uniqueNotes: pitchClasses.filter((value) => value > 0).length,
+  };
 }
 
 export function TranscriptionLab() {
@@ -118,6 +148,7 @@ export function TranscriptionLab() {
   }, []);
 
   const { t } = useLocale();
+  const melodicProfile = useMemo(() => inferMelodicProfile(notes), [notes]);
 
   function setPlaybackSource(playbackBlob) {
     if (audioUrlRef.current) {
@@ -646,6 +677,14 @@ export function TranscriptionLab() {
                 <span>{`${analysisSummary.noteCount || notes.length} events`}</span>
                 <span>{`Voiced ${(Math.round((analysisSummary.voicedRatio || 0) * 100))}%`}</span>
                 <span>{`Confidence ${(Math.round((analysisSummary.averageConfidence || 0) * 100))}%`}</span>
+              </div>
+            ) : null}
+            {melodicProfile ? (
+              <div className="analysis-summary">
+                <span>{`Estimated key ${melodicProfile.key}`}</span>
+                <span>{`Fit ${Math.round(melodicProfile.confidence * 100)}%`}</span>
+                <span>{`Range ${melodicProfile.range} semitones`}</span>
+                <span>{`${melodicProfile.uniqueNotes} pitch classes`}</span>
               </div>
             ) : null}
             <div className="detected-list">

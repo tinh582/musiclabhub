@@ -37,6 +37,52 @@ function parseCSV(text) {
   });
 }
 
+function clusterTracks(tracks, clusterCount = 3, iterations = 12) {
+  if (!clusterCount || tracks.length < clusterCount) return [];
+  const vectors = tracks.map((track) => [
+    Number(track.energy || 0),
+    Number(track.valence || 0),
+    Number(track.danceability || 0),
+    Number(track.tempo || 0) / 200,
+  ]);
+  let centroids = Array.from({ length: clusterCount }, (_, index) =>
+    vectors[Math.floor((index * vectors.length) / clusterCount)].slice());
+  let assignments = new Array(vectors.length).fill(0);
+
+  for (let step = 0; step < iterations; step += 1) {
+    assignments = vectors.map((vector) => {
+      let bestIndex = 0;
+      let bestDistance = Infinity;
+      centroids.forEach((centroid, index) => {
+        const distance = Math.sqrt(vector.reduce((sum, value, dim) => sum + ((value - centroid[dim]) ** 2), 0));
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestIndex = index;
+        }
+      });
+      return bestIndex;
+    });
+    centroids = centroids.map((centroid, cluster) => {
+      const members = vectors.filter((_, index) => assignments[index] === cluster);
+      if (!members.length) return centroid;
+      return centroid.map((_, dim) => members.reduce((sum, vector) => sum + vector[dim], 0) / members.length);
+    });
+  }
+
+  return centroids.map((centroid, cluster) => {
+    const energy = centroid[0];
+    const valence = centroid[1];
+    const label = energy > 0.65
+      ? (valence > 0.55 ? 'Energetic bright' : 'Energetic dark')
+      : (valence > 0.55 ? 'Gentle bright' : 'Calm moody');
+    return {
+      label,
+      count: assignments.filter((assignment) => assignment === cluster).length,
+      tempo: centroid[3] * 200,
+    };
+  });
+}
+
 export function AnalyticsLab() {
   const { t } = useLocale();
   const [dataset, setDataset] = useState(() => buildCatalog(t || ((k, f) => f)));
@@ -98,6 +144,7 @@ export function AnalyticsLab() {
   }, [filtered]);
 
   const scatterPoints = useMemo(() => filtered.map((track) => ({ x: Number(track.energy || 0), y: Number(track.valence || 0), genre: track.genre, title: `${track.title || ''} — ${track.artist || ''}` })), [filtered]);
+  const discoveredClusters = useMemo(() => clusterTracks(filtered, Math.min(3, filtered.length)), [filtered]);
 
   function handleFile(e) {
     const f = e.target.files && e.target.files[0];
@@ -246,6 +293,18 @@ export function AnalyticsLab() {
           </div>
 
           <div style={{ marginTop: 12 }}>
+            <div style={{ marginBottom: 18 }}>
+              <p className="eyebrow">AI-discovered clusters</p>
+              <div className="practice-log">
+                {discoveredClusters.map((cluster, index) => (
+                  <div key={`${cluster.label}-${index}`} className="practice-log__item">
+                    <strong>{cluster.label}</strong>
+                    <span>{cluster.count} tracks</span>
+                    <span>{Math.round(cluster.tempo)} BPM</span>
+                  </div>
+                ))}
+              </div>
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 <strong>{t('analytics.legend', 'Legend')}</strong>
