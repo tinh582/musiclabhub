@@ -22,7 +22,7 @@ function noteNameToMidi(name) {
   return baseMap[base] + (sharp ? 1 : 0) + (octave + 1) * 12;
 }
 
-export function InstrumentLab() {
+export function InstrumentLab({ moduleHandoff = null, clearModuleHandoff = null }) {
   const [ctx, setCtx] = useState(null);
   const voices = useRef({});
   const [wave, setWave] = useState('sine');
@@ -50,6 +50,8 @@ export function InstrumentLab() {
   const [selectedMidiOut, setSelectedMidiOut] = useState(null);
   const [quantizeRes, setQuantizeRes] = useState(16);
   const [quantizeTempo, setQuantizeTempo] = useState(120);
+  const [importedPerformance, setImportedPerformance] = useState(null);
+  const importedHandoffRef = useRef(null);
 
   const [presets, setPresets] = useState(() => {
     try { return JSON.parse(localStorage.getItem('instr-presets') || '[]'); } catch (e) { return []; }
@@ -72,6 +74,53 @@ export function InstrumentLab() {
       window.removeEventListener('keyup', onKey);
     };
   }, [ctx, wave, attack, release, baseOctave, octaves]);
+
+  useEffect(() => {
+    if (moduleHandoff?.type !== 'performance' || importedHandoffRef.current === moduleHandoff.id) return;
+    const melody = moduleHandoff.payload?.melody;
+    if (!Array.isArray(melody) || !melody.length) return;
+    importedHandoffRef.current = moduleHandoff.id;
+    const tempo = Number(moduleHandoff.payload?.tempo || 120);
+    let cursor = 0;
+    const events = [];
+    melody.forEach((note) => {
+      const duration = Math.max(0.125, Number(note.duration || 0.5));
+      events.push({ time: cursor, type: 'on', note: Number(note.midi), vel: 90 });
+      events.push({ time: cursor + duration, type: 'off', note: Number(note.midi), vel: 64 });
+      cursor += duration;
+    });
+    eventsRef.current = events;
+    setQuantizeTempo(tempo);
+    setImportedPerformance({
+      title: moduleHandoff.payload?.title || 'Imported melody',
+      melody,
+      duration: cursor,
+    });
+    clearModuleHandoff?.();
+  }, [clearModuleHandoff, moduleHandoff]);
+
+  function playImportedPerformance() {
+    if (!importedPerformance?.melody?.length) return;
+    const audioCtx = ensureCtx();
+    let cursor = audioCtx.currentTime + 0.08;
+    importedPerformance.melody.forEach((note, index) => {
+      const duration = Math.max(0.125, Number(note.duration || 0.5));
+      const id = `imported-${index}-${cursor}`;
+      const oscillator = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      oscillator.type = wave;
+      oscillator.frequency.value = noteToFreqFromMidi(Number(note.midi));
+      gain.gain.setValueAtTime(0.0001, cursor);
+      gain.gain.exponentialRampToValueAtTime(0.35, cursor + Math.max(0.01, attack));
+      gain.gain.exponentialRampToValueAtTime(0.0001, cursor + duration);
+      oscillator.connect(gain);
+      gain.connect(masterRef.current);
+      oscillator.start(cursor);
+      oscillator.stop(cursor + duration + 0.02);
+      cursor += duration;
+      void id;
+    });
+  }
 
   useEffect(() => {
     if (masterRef.current) masterRef.current.gain.value = masterGain;
@@ -420,6 +469,14 @@ export function InstrumentLab() {
       </div>
 
       <div className="panel" style={{ marginTop: 12 }}>
+        {importedPerformance ? (
+          <div className="analysis-summary" style={{ marginBottom: 12 }}>
+            <span>{importedPerformance.title}</span>
+            <span>{importedPerformance.melody.length} notes</span>
+            <span>{importedPerformance.duration.toFixed(1)}s</span>
+            <button type="button" className="mini-button" onClick={playImportedPerformance}>Play imported</button>
+          </div>
+        ) : null}
         <div className="controls-row">
           <div>
             <label className="form-label">{t('instrument.attack', 'Attack')}</label>

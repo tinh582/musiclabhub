@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocale } from '../i18n/LocaleProvider';
+import { useNavigate } from 'react-router-dom';
 
 function midiToFreq(midi) {
   return 440 * (2 ** ((midi - 69) / 12));
@@ -72,7 +73,8 @@ function snapToScale(midi, root, scale) {
   return best;
 }
 
-export function ComposerLab() {
+export function ComposerLab({ moduleHandoff = null, sendModuleHandoff = null, clearModuleHandoff = null }) {
+  const navigate = useNavigate();
   const [seedNote, setSeedNote] = useState('C');
   const [seedOctave, setSeedOctave] = useState(4);
   const [style, setStyle] = useState('ambient');
@@ -84,6 +86,24 @@ export function ComposerLab() {
   const sourceRef = useRef(null);
   const pianoRef = useRef(null);
   const midiXmlRef = useRef('');
+  const importedHandoffRef = useRef(null);
+
+  useEffect(() => {
+    if (moduleHandoff?.type !== 'melody' || importedHandoffRef.current === moduleHandoff.id) return;
+    const incoming = moduleHandoff.payload?.melody;
+    if (!Array.isArray(incoming) || !incoming.length) return;
+    importedHandoffRef.current = moduleHandoff.id;
+    const normalized = incoming.map((event) => ({
+      midi: Number(event.midi),
+      duration: Math.max(0.125, Number(event.duration || 0.5)),
+      note: event.note || midiToNoteName(Number(event.midi)),
+    }));
+    setMelody(normalized);
+    setLength(Math.min(32, Math.max(4, normalized.length)));
+    exportMidiXml(normalized);
+    clearModuleHandoff?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moduleHandoff]);
 
   function ensureAudioContext() {
     if (!audioCtxRef.current) {
@@ -314,6 +334,16 @@ export function ComposerLab() {
     a.click();
     URL.revokeObjectURL(url);
   }
+
+  function sendToInstrument() {
+    if (!melody.length || !sendModuleHandoff) return;
+    sendModuleHandoff('performance', {
+      melody,
+      tempo: 120,
+      title: 'Composer melody',
+    }, 'Composer');
+    navigate('/feature/instrument');
+  }
   const { t } = useLocale();
 
   return (
@@ -385,6 +415,9 @@ export function ComposerLab() {
                   </button>
                   <button className="button button--ghost" onClick={downloadMidi}>
                     {t('composer.exportMidi', 'Export MIDI')}
+                  </button>
+                  <button className="button button--ghost" onClick={sendToInstrument}>
+                    Open in Instrument
                   </button>
                 </>
               )}

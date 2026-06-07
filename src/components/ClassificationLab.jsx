@@ -28,7 +28,7 @@ function deriveTrackFeatures(audioInfo, fallbackTempo = 96) {
   };
 }
 
-export function ClassificationLab() {
+export function ClassificationLab({ workspaceAudio = null }) {
   const { t } = useLocale();
   const localizedCatalog = buildCatalog(t);
   const [selectedId, setSelectedId] = useState(localizedCatalog[0].id);
@@ -218,6 +218,19 @@ export function ClassificationLab() {
   useEffect(() => () => {
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
   }, []);
+
+  useEffect(() => {
+    if (!workspaceAudio?.url) return;
+    setCustomSource({
+      id: `workspace-${workspaceAudio.url}`,
+      title: workspaceAudio.name.replace(/\.[^/.]+$/, '') || 'Workspace audio',
+      artist: 'Shared workspace',
+      audioUrl: workspaceAudio.url,
+    });
+    setAudioUrlInput('');
+    setSourceError('');
+    setPlaying(false);
+  }, [workspaceAudio]);
 
   function clearCustomSource() {
     if (objectUrlRef.current) {

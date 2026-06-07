@@ -1,0 +1,14 @@
+
+> music-lab-hub@0.0.0 dev
+> vite --host 127.0.0.1 --port 5173
+
+
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m337[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttps://127.0.0.1:[1m5173[22m/[39m
+[2m5:22:12 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/Layout.jsx[22m
+[2m5:22:12 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/FeaturePage.jsx[22m
+[2m5:22:12 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/Layout.jsx[22m
+[2m5:22:12 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/TranscriptionLab.jsx[22m
+[2m5:22:42 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/ComposerLab.jsx[22m
+[2m5:22:42 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/InstrumentLab.jsx[22m

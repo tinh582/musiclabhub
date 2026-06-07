@@ -1,4 +1,4 @@
-import { Link, useParams } from 'react-router-dom';
+import { Link, useOutletContext, useParams } from 'react-router-dom';
 import { RecommendationStudio } from '../components/RecommendationStudio';
 import { PracticeRoom } from '../components/PracticeRoom';
 import { TranscriptionLab } from '../components/TranscriptionLab';
@@ -22,6 +22,12 @@ export function FeaturePage() {
   const { t } = useLocale();
   const { featurePages } = useSiteContent();
   const { slug } = useParams();
+  const {
+    workspaceAudio,
+    moduleHandoff,
+    sendModuleHandoff,
+    clearModuleHandoff,
+  } = useOutletContext();
   const page = featurePages.find((item) => item.slug === slug);
 
   if (!page) {
@@ -67,13 +73,21 @@ export function FeaturePage() {
 
       {page.slug === 'recommendation' ? <RecommendationStudio /> : null}
       {page.slug === 'practice' ? <PracticeRoom /> : null}
-      {page.slug === 'classification' ? <ClassificationLab /> : null}
-      {page.slug === 'transcription' ? <TranscriptionLab /> : null}
-      {page.slug === 'visualizations' ? <VisualizationsLab /> : null}
-      {page.slug === 'composer' ? <ComposerLab /> : null}
+      {page.slug === 'classification' ? <ClassificationLab workspaceAudio={workspaceAudio} /> : null}
+      {page.slug === 'transcription' ? <TranscriptionLab workspaceAudio={workspaceAudio} sendModuleHandoff={sendModuleHandoff} /> : null}
+      {page.slug === 'visualizations' ? <VisualizationsLab workspaceAudio={workspaceAudio} /> : null}
+      {page.slug === 'composer' ? (
+        <ComposerLab
+          moduleHandoff={moduleHandoff}
+          sendModuleHandoff={sendModuleHandoff}
+          clearModuleHandoff={clearModuleHandoff}
+        />
+      ) : null}
       {page.slug === 'analytics' ? <AnalyticsLab /> : null}
-      {page.slug === 'effects' ? <EffectsLab /> : null}
-      {page.slug === 'instrument' ? <InstrumentLab /> : null}
+      {page.slug === 'effects' ? <EffectsLab workspaceAudio={workspaceAudio} /> : null}
+      {page.slug === 'instrument' ? (
+        <InstrumentLab moduleHandoff={moduleHandoff} clearModuleHandoff={clearModuleHandoff} />
+      ) : null}
 
       <section className="content-grid content-grid--three">
         {page.panels.map((panel) => (

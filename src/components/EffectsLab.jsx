@@ -3,7 +3,7 @@ import { CATALOG, buildCatalog } from '../data/catalog';
 import { useLocale } from '../i18n/LocaleProvider';
 import { useAudioFeatures } from '../hooks/useAudioFeatures';
 
-export function EffectsLab() {
+export function EffectsLab({ workspaceAudio = null }) {
   const { t } = useLocale();
   const localizedCatalog = buildCatalog(t);
   const [fileUrl, setFileUrl] = useState((localizedCatalog && localizedCatalog[0] && localizedCatalog[0].audioUrl) || '/audio/sample1.mp3');
@@ -37,6 +37,13 @@ export function EffectsLab() {
       if (downloadUrl) URL.revokeObjectURL(downloadUrl);
     };
   }, []);
+
+  useEffect(() => {
+    if (!workspaceAudio?.url) return;
+    setFileUrl(workspaceAudio.url);
+    setIsPlaying(false);
+    setAudioError(null);
+  }, [workspaceAudio]);
 
   function ensureAudioContext() {
     if (ctxRef.current && ctxRef.current.state === 'closed') {

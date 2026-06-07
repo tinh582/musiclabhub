@@ -6,7 +6,7 @@ function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v));
 }
 
-export function VisualizationsLab() {
+export function VisualizationsLab({ workspaceAudio = null }) {
   const audioRef = useRef(null);
   const audioCtxRef = useRef(null);
   const analyserRef = useRef(null);
@@ -263,14 +263,14 @@ export function VisualizationsLab() {
     }
   }
 
-  function loadObjectUrl(url, label) {
+  function loadObjectUrl(url, label, ownsUrl = false) {
     const audio = audioRef.current;
     if (!audio) return;
     if (objectUrlRef.current) {
       URL.revokeObjectURL(objectUrlRef.current);
       objectUrlRef.current = null;
     }
-    objectUrlRef.current = url.startsWith('blob:') ? url : null;
+    objectUrlRef.current = ownsUrl ? url : null;
     audio.src = url;
     audio.load();
     setSourceUrl(url);
@@ -286,7 +286,7 @@ export function VisualizationsLab() {
     const file = e.target.files?.[0];
     if (!file) return;
     const url = URL.createObjectURL(file);
-    loadObjectUrl(url, file.name);
+    loadObjectUrl(url, file.name, true);
   }
 
   function loadRemoteUrl() {
@@ -300,6 +300,13 @@ export function VisualizationsLab() {
     if (!track) return;
     loadObjectUrl(track.url, track.label);
   }
+
+  useEffect(() => {
+    if (!workspaceAudio?.url) return;
+    loadObjectUrl(workspaceAudio.url, workspaceAudio.name);
+    // The workspace owns and revokes this object URL.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceAudio]);
 
   function applyIntelligentView() {
     if (!audioProfile) return;

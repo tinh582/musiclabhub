@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useLocale } from '../i18n/LocaleProvider';
 import { useSiteContent } from '../hooks/useSiteContent';
@@ -24,6 +24,9 @@ export function Layout() {
   const [showBrand, setShowBrand] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
   const [currentUserName, setCurrentUserName] = useState(null);
+  const [workspaceAudio, setWorkspaceAudio] = useState(null);
+  const [moduleHandoff, setModuleHandoff] = useState(null);
+  const workspaceUrlRef = useRef(null);
 
   const applySessionUser = (user) => {
     setCurrentUser(user?.email || null);
@@ -39,6 +42,42 @@ export function Layout() {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  useEffect(() => () => {
+    if (workspaceUrlRef.current) URL.revokeObjectURL(workspaceUrlRef.current);
+  }, []);
+
+  const selectWorkspaceAudio = (file) => {
+    if (!file) return;
+    if (workspaceUrlRef.current) URL.revokeObjectURL(workspaceUrlRef.current);
+    const url = URL.createObjectURL(file);
+    workspaceUrlRef.current = url;
+    setWorkspaceAudio({
+      url,
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      file,
+    });
+  };
+
+  const clearWorkspaceAudio = () => {
+    if (workspaceUrlRef.current) URL.revokeObjectURL(workspaceUrlRef.current);
+    workspaceUrlRef.current = null;
+    setWorkspaceAudio(null);
+  };
+
+  const sendModuleHandoff = (type, payload, source) => {
+    setModuleHandoff({
+      id: Date.now(),
+      type,
+      payload,
+      source,
+      createdAt: new Date().toISOString(),
+    });
+  };
+
+  const clearModuleHandoff = () => setModuleHandoff(null);
 
   useEffect(() => {
     let mounted = true;
@@ -147,6 +186,28 @@ export function Layout() {
             <h2>{t('layout.topbar.title', 'One interface, nine music modules, and a clean thesis story.')}</h2>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <label className="mini-button workspace-upload">
+              <span>{workspaceAudio ? 'Replace song' : 'Upload song'}</span>
+              <input
+                type="file"
+                accept="audio/*"
+                onChange={(event) => {
+                  selectWorkspaceAudio(event.target.files?.[0]);
+                  event.target.value = '';
+                }}
+              />
+            </label>
+            {workspaceAudio ? (
+              <>
+                <span className="topbar-chip" title={workspaceAudio.name}>{workspaceAudio.name}</span>
+                <button type="button" className="mini-button" onClick={clearWorkspaceAudio}>Clear</button>
+              </>
+            ) : null}
+            {moduleHandoff ? (
+              <span className="topbar-chip" title={`Sent from ${moduleHandoff.source}`}>
+                Handoff: {moduleHandoff.type}
+              </span>
+            ) : null}
             <span className="topbar-chip">{t('layout.topbar.status', 'Ready for prototyping')}</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span className="eyebrow" style={{ margin: 0 }}>{t('layout.language', 'Language')}</span>
@@ -169,7 +230,20 @@ export function Layout() {
         </header>
 
         <section className="page-root">
-          <Outlet context={{ currentUser, currentUserName, loginUser, registerUser, logoutUser, updateDisplayName }} />
+          <Outlet context={{
+            currentUser,
+            currentUserName,
+            loginUser,
+            registerUser,
+            logoutUser,
+            updateDisplayName,
+            workspaceAudio,
+            selectWorkspaceAudio,
+            clearWorkspaceAudio,
+            moduleHandoff,
+            sendModuleHandoff,
+            clearModuleHandoff,
+          }} />
         </section>
       </main>
     </div>

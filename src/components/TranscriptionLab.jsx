@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { useLocale } from '../i18n/LocaleProvider';
+import { useNavigate } from 'react-router-dom';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://localhost:5174';
 
@@ -74,7 +75,8 @@ function inferMelodicProfile(notes) {
   };
 }
 
-export function TranscriptionLab() {
+export function TranscriptionLab({ workspaceAudio = null, sendModuleHandoff = null }) {
+  const navigate = useNavigate();
   const fileRef = useRef(null);
   const audioRef = useRef(null);
   const canvasRef = useRef(null);
@@ -97,6 +99,7 @@ export function TranscriptionLab() {
   const scheduledRef = useRef([]);
   const playbackStartRef = useRef(null);
   const animationRef = useRef(null);
+  const workspaceLoadedRef = useRef('');
 
   const sampleTracks = [
     { label: 'Sample 1', url: '/audio/sample1.mp3' },
@@ -149,6 +152,19 @@ export function TranscriptionLab() {
 
   const { t } = useLocale();
   const melodicProfile = useMemo(() => inferMelodicProfile(notes), [notes]);
+
+  function sendToComposer() {
+    if (!notes.length || !sendModuleHandoff) return;
+    const melody = notes
+      .filter((note) => note.frequency && note.kind !== 'rest')
+      .map((note) => ({
+        midi: Math.round(69 + 12 * Math.log2(note.frequency / 440)),
+        duration: Math.max(0.125, Number(note.duration || 0.5)),
+        note: note.note,
+      }));
+    sendModuleHandoff('melody', { melody, tempo, title: 'Transcribed melody' }, 'Transcription');
+    navigate('/feature/composer');
+  }
 
   function setPlaybackSource(playbackBlob) {
     if (audioUrlRef.current) {
@@ -215,6 +231,29 @@ export function TranscriptionLab() {
     const channelData = audioBuffer.getChannelData(0).slice();
     workerRef.current.postMessage({ cmd: 'detect', audioBuffer: channelData.buffer, sampleRate: audioBuffer.sampleRate }, [channelData.buffer]);
   }
+
+  useEffect(() => {
+    if (!workspaceAudio?.file || workspaceLoadedRef.current === workspaceAudio.url) return;
+    workspaceLoadedRef.current = workspaceAudio.url;
+    let active = true;
+    setLoading(true);
+    workspaceAudio.file.arrayBuffer()
+      .then((arrayBuffer) => {
+        if (!active) return null;
+        return processArrayBuffer(arrayBuffer, workspaceAudio.name, workspaceAudio.file);
+      })
+      .catch((error) => {
+        if (active) console.error(error);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+    // Loading is keyed to the selected workspace file, not quantization controls.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceAudio]);
 
   async function handleFile(e) {
     const file = e.target.files[0];
@@ -663,6 +702,9 @@ export function TranscriptionLab() {
                 <button className="button button--primary" type="button" onClick={playQuantized} disabled={notes.length === 0}>{t('transcription.playQuantized', 'Play quantized')}</button>
                 <button className="button button--ghost" type="button" onClick={exportQuantizedMusicXML} disabled={notes.length === 0}>{t('transcription.exportQuantizedXml', 'Export quantized XML')}</button>
                 <button className="button button--ghost" type="button" onClick={exportQuantizedMIDI} disabled={notes.length === 0}>{t('transcription.exportMidi', 'Export MIDI')}</button>
+                <button className="button button--ghost" type="button" onClick={sendToComposer} disabled={notes.length === 0}>
+                  Open in Composer
+                </button>
               </div>
             </div>
           </div>
