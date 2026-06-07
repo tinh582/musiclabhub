@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useLocale } from '../i18n/LocaleProvider';
 import { useSiteContent } from '../hooks/useSiteContent';
 import { supabase } from '../lib/supabaseClient';
@@ -19,6 +19,7 @@ function getDisplayName(user) {
 }
 
 export function Layout() {
+  const navigate = useNavigate();
   const { locale, setLocale, t } = useLocale();
   const { navigationItems } = useSiteContent();
   const [showBrand, setShowBrand] = useState(true);
@@ -26,6 +27,14 @@ export function Layout() {
   const [currentUserName, setCurrentUserName] = useState(null);
   const [workspaceAudio, setWorkspaceAudio] = useState(null);
   const [moduleHandoff, setModuleHandoff] = useState(null);
+  const [analysisHistory, setAnalysisHistory] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('mlh_analysis_history') || '[]');
+    } catch (error) {
+      return [];
+    }
+  });
+  const [historyOpen, setHistoryOpen] = useState(false);
   const workspaceUrlRef = useRef(null);
 
   const applySessionUser = (user) => {
@@ -78,6 +87,32 @@ export function Layout() {
   };
 
   const clearModuleHandoff = () => setModuleHandoff(null);
+
+  const saveAnalysis = (entry) => {
+    const nextEntry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      createdAt: new Date().toISOString(),
+      ...entry,
+    };
+    setAnalysisHistory((current) => {
+      const next = [nextEntry, ...current].slice(0, 40);
+      localStorage.setItem('mlh_analysis_history', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const removeAnalysis = (id) => {
+    setAnalysisHistory((current) => {
+      const next = current.filter((entry) => entry.id !== id);
+      localStorage.setItem('mlh_analysis_history', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const clearAnalysisHistory = () => {
+    localStorage.removeItem('mlh_analysis_history');
+    setAnalysisHistory([]);
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -208,6 +243,9 @@ export function Layout() {
                 Handoff: {moduleHandoff.type}
               </span>
             ) : null}
+            <button type="button" className="mini-button" onClick={() => setHistoryOpen((open) => !open)}>
+              History {analysisHistory.length ? `(${analysisHistory.length})` : ''}
+            </button>
             <span className="topbar-chip">{t('layout.topbar.status', 'Ready for prototyping')}</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span className="eyebrow" style={{ margin: 0 }}>{t('layout.language', 'Language')}</span>
@@ -229,6 +267,45 @@ export function Layout() {
           </div>
         </header>
 
+        {historyOpen ? (
+          <section className="history-drawer" aria-label="Analysis history">
+            <div className="history-drawer__header">
+              <div>
+                <p className="eyebrow">Analysis history</p>
+                <strong>Saved results</strong>
+              </div>
+              <div className="history-drawer__actions">
+                <button type="button" className="mini-button" onClick={clearAnalysisHistory} disabled={!analysisHistory.length}>Clear all</button>
+                <button type="button" className="mini-button" onClick={() => setHistoryOpen(false)}>Close</button>
+              </div>
+            </div>
+            <div className="history-list">
+              {analysisHistory.length ? analysisHistory.map((entry) => (
+                <article key={entry.id} className="history-item">
+                  <div>
+                    <p className="eyebrow">{entry.module}</p>
+                    <strong>{entry.title}</strong>
+                    <span>{entry.source || 'Unknown source'}</span>
+                    <small>{new Date(entry.createdAt).toLocaleString()}</small>
+                  </div>
+                  <div className="history-item__metrics">
+                    {(entry.metrics || []).slice(0, 4).map((metric) => (
+                      <span key={`${metric.label}-${metric.value}`}>{metric.label}: <strong>{metric.value}</strong></span>
+                    ))}
+                  </div>
+                  <div className="history-item__actions">
+                    <button type="button" className="mini-button" onClick={() => {
+                      navigate(`/feature/${entry.slug}`);
+                      setHistoryOpen(false);
+                    }}>Open</button>
+                    <button type="button" className="mini-button" onClick={() => removeAnalysis(entry.id)}>Remove</button>
+                  </div>
+                </article>
+              )) : <p className="practice-note">No saved analyses yet.</p>}
+            </div>
+          </section>
+        ) : null}
+
         <section className="page-root">
           <Outlet context={{
             currentUser,
@@ -243,6 +320,8 @@ export function Layout() {
             moduleHandoff,
             sendModuleHandoff,
             clearModuleHandoff,
+            analysisHistory,
+            saveAnalysis,
           }} />
         </section>
       </main>

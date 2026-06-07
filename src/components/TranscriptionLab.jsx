@@ -75,7 +75,7 @@ function inferMelodicProfile(notes) {
   };
 }
 
-export function TranscriptionLab({ workspaceAudio = null, sendModuleHandoff = null }) {
+export function TranscriptionLab({ workspaceAudio = null, sendModuleHandoff = null, saveAnalysis = null }) {
   const navigate = useNavigate();
   const fileRef = useRef(null);
   const audioRef = useRef(null);
@@ -164,6 +164,22 @@ export function TranscriptionLab({ workspaceAudio = null, sendModuleHandoff = nu
       }));
     sendModuleHandoff('melody', { melody, tempo, title: 'Transcribed melody' }, 'Transcription');
     navigate('/feature/composer');
+  }
+
+  function saveCurrentAnalysis() {
+    if (!notes.length || !saveAnalysis) return;
+    saveAnalysis({
+      module: 'Transcription',
+      slug: 'transcription',
+      title: melodicProfile ? `${melodicProfile.key} transcription` : 'Note transcription',
+      source: workspaceAudio?.name || 'Uploaded audio',
+      metrics: [
+        { label: 'Events', value: String(analysisSummary?.noteCount || notes.length) },
+        { label: 'Confidence', value: `${Math.round((analysisSummary?.averageConfidence || 0) * 100)}%` },
+        { label: 'Range', value: melodicProfile ? `${melodicProfile.range} semitones` : 'n/a' },
+        { label: 'Tempo', value: `${tempo} BPM` },
+      ],
+    });
   }
 
   function setPlaybackSource(playbackBlob) {
@@ -704,6 +720,9 @@ export function TranscriptionLab({ workspaceAudio = null, sendModuleHandoff = nu
                 <button className="button button--ghost" type="button" onClick={exportQuantizedMIDI} disabled={notes.length === 0}>{t('transcription.exportMidi', 'Export MIDI')}</button>
                 <button className="button button--ghost" type="button" onClick={sendToComposer} disabled={notes.length === 0}>
                   Open in Composer
+                </button>
+                <button className="button button--ghost" type="button" onClick={saveCurrentAnalysis} disabled={notes.length === 0}>
+                  Save analysis
                 </button>
               </div>
             </div>

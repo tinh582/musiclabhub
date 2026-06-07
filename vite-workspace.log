@@ -12,3 +12,18 @@
 [2m5:22:12 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/TranscriptionLab.jsx[22m
 [2m5:22:42 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/ComposerLab.jsx[22m
 [2m5:22:42 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/InstrumentLab.jsx[22m
+[2m5:25:57 PM[22m [36m[1m[vite][22m[39m [32m✨ new dependencies optimized: [33mpitchfinder[32m[39m
+[2m5:25:57 PM[22m [36m[1m[vite][22m[39m [32m✨ optimized dependencies changed. reloading[39m
+[2m5:27:17 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/Layout.jsx[22m
+[2m5:27:17 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/FeaturePage.jsx[22m
+[2m5:27:17 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[2m5:27:53 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/ClassificationLab.jsx[22m
+[2m5:27:53 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/TranscriptionLab.jsx[22m
+[2m5:27:53 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/VisualizationsLab.jsx[22m
+[2m5:27:53 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/EffectsLab.jsx[22m
+[2m5:27:53 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/AnalyticsLab.jsx[22m
+[2m5:36:00 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m5:36:00 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/FeaturePage.jsx[22m
+[2m5:36:00 PM[22m [36m[1m[vite][22m[39m [32mvite.config.js changed, restarting server...[39m
+[2m5:36:00 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[2m5:36:01 PM[22m [36m[1m[vite][22m[39m server restarted.

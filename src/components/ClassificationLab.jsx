@@ -28,7 +28,7 @@ function deriveTrackFeatures(audioInfo, fallbackTempo = 96) {
   };
 }
 
-export function ClassificationLab({ workspaceAudio = null }) {
+export function ClassificationLab({ workspaceAudio = null, saveAnalysis = null }) {
   const { t } = useLocale();
   const localizedCatalog = buildCatalog(t);
   const [selectedId, setSelectedId] = useState(localizedCatalog[0].id);
@@ -338,6 +338,22 @@ export function ClassificationLab({ workspaceAudio = null }) {
     setSelectedId(track.id);
   }
 
+  function saveCurrentAnalysis() {
+    if (!selected || !probs.length || !saveAnalysis) return;
+    saveAnalysis({
+      module: 'Classification',
+      slug: 'classification',
+      title: `Predicted ${probs[0].genre}`,
+      source: selected.title,
+      metrics: [
+        { label: 'Confidence', value: `${Math.round(probs[0].prob * 100)}%` },
+        { label: 'Energy', value: `${Math.round(selected.energy * 100)}%` },
+        { label: 'Valence', value: `${Math.round(selected.valence * 100)}%` },
+        { label: 'Tempo', value: `${Math.round(selected.tempo)} BPM` },
+      ],
+    });
+  }
+
   return (
     <section className="classification-lab">
       <div className="classification-grid">
@@ -446,6 +462,7 @@ export function ClassificationLab({ workspaceAudio = null }) {
             <div style={{ marginTop: 12 }}>
               <audio ref={audioRef} onEnded={() => setPlaying(false)} />
               <button className="button button--primary" onClick={() => playDemo(selected)}>{playing ? t('rec.stop', 'Stop') : t('class.playDemo', 'Play demo')}</button>
+              <button className="button button--ghost" onClick={saveCurrentAnalysis} disabled={!probs.length}>Save analysis</button>
             </div>
 
             <div style={{ marginTop: 12 }}>

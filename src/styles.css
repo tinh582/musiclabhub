@@ -6,12 +6,77 @@
   cursor: pointer;
 }
 
+.module-loading {
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
 .workspace-upload input {
   position: absolute;
   width: 1px;
   height: 1px;
   opacity: 0;
   pointer-events: none;
+}
+
+.history-drawer {
+  border-bottom: 1px solid var(--line);
+  padding: 16px 24px;
+  background: var(--surface);
+}
+
+.history-drawer__header,
+.history-item,
+.history-drawer__actions,
+.history-item__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.history-drawer__header {
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.history-list {
+  display: grid;
+  gap: 8px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.history-item {
+  justify-content: space-between;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.history-item > div:first-child {
+  display: grid;
+  min-width: 180px;
+}
+
+.history-item span,
+.history-item small {
+  color: var(--muted);
+}
+
+.history-item__metrics {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+@media (max-width: 760px) {
+  .history-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 
 :root {

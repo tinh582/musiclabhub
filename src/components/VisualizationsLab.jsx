@@ -6,7 +6,7 @@ function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v));
 }
 
-export function VisualizationsLab({ workspaceAudio = null }) {
+export function VisualizationsLab({ workspaceAudio = null, saveAnalysis = null }) {
   const audioRef = useRef(null);
   const audioCtxRef = useRef(null);
   const analyserRef = useRef(null);
@@ -320,6 +320,22 @@ export function VisualizationsLab({ workspaceAudio = null }) {
     setOscZoom(clamp(0.28 + audioProfile.dynamicRangeDb / 80, 0.25, 0.46));
   }
 
+  function saveCurrentAnalysis() {
+    if (!audioProfile || !saveAnalysis) return;
+    saveAnalysis({
+      module: 'Visualizations',
+      slug: 'visualizations',
+      title: `${audioProfile.estimatedKey} audio profile`,
+      source: loadedLabel,
+      metrics: [
+        { label: 'Tempo', value: audioProfile.tempo ? `${audioProfile.tempo} BPM` : 'n/a' },
+        { label: 'Brightness', value: `${Math.round(audioProfile.spectralCentroid)} Hz` },
+        { label: 'Dynamics', value: `${audioProfile.dynamicRangeDb.toFixed(1)} dB` },
+        { label: 'Texture', value: audioProfile.spectralFlatness > 0.22 ? 'Noisy' : 'Tonal' },
+      ],
+    });
+  }
+
   const peakPct = clamp(Math.round(peak * 100), 0, 100);
   const vuPct = clamp(Math.round(vu * 100), 0, 100);
   const ballScale = (1 + peak * 0.28).toFixed(3);
@@ -360,6 +376,9 @@ export function VisualizationsLab({ workspaceAudio = null }) {
               <button type="button" className="button button--ghost" onClick={stopPlayback}>{t('viz.stop', 'Stop')}</button>
               <button type="button" className="button button--ghost" onClick={applyIntelligentView} disabled={!audioProfile || profileLoading}>
                 {profileLoading ? 'Analyzing...' : 'AI view'}
+              </button>
+              <button type="button" className="button button--ghost" onClick={saveCurrentAnalysis} disabled={!audioProfile}>
+                Save analysis
               </button>
             </div>
             <p className="practice-note">{t('viz.loaded', 'Loaded')}: {loadedLabel}</p>

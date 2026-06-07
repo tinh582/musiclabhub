@@ -8,3 +8,4 @@ yarn-error.log*
 .env
 server/.env
 .env.local
+vite-*.log

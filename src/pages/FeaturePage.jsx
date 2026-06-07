@@ -1,15 +1,19 @@
+import { lazy, Suspense } from 'react';
 import { Link, useOutletContext, useParams } from 'react-router-dom';
-import { RecommendationStudio } from '../components/RecommendationStudio';
-import { PracticeRoom } from '../components/PracticeRoom';
-import { TranscriptionLab } from '../components/TranscriptionLab';
-import { ClassificationLab } from '../components/ClassificationLab';
-import { VisualizationsLab } from '../components/VisualizationsLab';
-import { AnalyticsLab } from '../components/AnalyticsLab';
-import { EffectsLab } from '../components/EffectsLab';
-import { ComposerLab } from '../components/ComposerLab';
-import { InstrumentLab } from '../components/InstrumentLab';
 import { useLocale } from '../i18n/LocaleProvider';
 import { useSiteContent } from '../hooks/useSiteContent';
+
+const MODULES = {
+  recommendation: lazy(() => import('../components/RecommendationStudio').then((module) => ({ default: module.RecommendationStudio }))),
+  practice: lazy(() => import('../components/PracticeRoom').then((module) => ({ default: module.PracticeRoom }))),
+  transcription: lazy(() => import('../components/TranscriptionLab').then((module) => ({ default: module.TranscriptionLab }))),
+  classification: lazy(() => import('../components/ClassificationLab').then((module) => ({ default: module.ClassificationLab }))),
+  visualizations: lazy(() => import('../components/VisualizationsLab').then((module) => ({ default: module.VisualizationsLab }))),
+  analytics: lazy(() => import('../components/AnalyticsLab').then((module) => ({ default: module.AnalyticsLab }))),
+  effects: lazy(() => import('../components/EffectsLab').then((module) => ({ default: module.EffectsLab }))),
+  composer: lazy(() => import('../components/ComposerLab').then((module) => ({ default: module.ComposerLab }))),
+  instrument: lazy(() => import('../components/InstrumentLab').then((module) => ({ default: module.InstrumentLab }))),
+};
 
 function getAccentLabel(accent, t) {
   if (accent === 'gold') return t('feature.accent.gold', 'Golden data story');
@@ -27,8 +31,10 @@ export function FeaturePage() {
     moduleHandoff,
     sendModuleHandoff,
     clearModuleHandoff,
+    saveAnalysis,
   } = useOutletContext();
   const page = featurePages.find((item) => item.slug === slug);
+  const ActiveModule = MODULES[slug];
 
   if (!page) {
     return (
@@ -71,22 +77,16 @@ export function FeaturePage() {
         </div>
       </section>
 
-      {page.slug === 'recommendation' ? <RecommendationStudio /> : null}
-      {page.slug === 'practice' ? <PracticeRoom /> : null}
-      {page.slug === 'classification' ? <ClassificationLab workspaceAudio={workspaceAudio} /> : null}
-      {page.slug === 'transcription' ? <TranscriptionLab workspaceAudio={workspaceAudio} sendModuleHandoff={sendModuleHandoff} /> : null}
-      {page.slug === 'visualizations' ? <VisualizationsLab workspaceAudio={workspaceAudio} /> : null}
-      {page.slug === 'composer' ? (
-        <ComposerLab
-          moduleHandoff={moduleHandoff}
-          sendModuleHandoff={sendModuleHandoff}
-          clearModuleHandoff={clearModuleHandoff}
-        />
-      ) : null}
-      {page.slug === 'analytics' ? <AnalyticsLab /> : null}
-      {page.slug === 'effects' ? <EffectsLab workspaceAudio={workspaceAudio} /> : null}
-      {page.slug === 'instrument' ? (
-        <InstrumentLab moduleHandoff={moduleHandoff} clearModuleHandoff={clearModuleHandoff} />
+      {ActiveModule ? (
+        <Suspense fallback={<div className="module-loading">Loading {page.label}...</div>}>
+          <ActiveModule
+            workspaceAudio={workspaceAudio}
+            moduleHandoff={moduleHandoff}
+            sendModuleHandoff={sendModuleHandoff}
+            clearModuleHandoff={clearModuleHandoff}
+            saveAnalysis={saveAnalysis}
+          />
+        </Suspense>
       ) : null}
 
       <section className="content-grid content-grid--three">

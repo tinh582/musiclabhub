@@ -3,7 +3,7 @@ import { CATALOG, buildCatalog } from '../data/catalog';
 import { useLocale } from '../i18n/LocaleProvider';
 import { useAudioFeatures } from '../hooks/useAudioFeatures';
 
-export function EffectsLab({ workspaceAudio = null }) {
+export function EffectsLab({ workspaceAudio = null, saveAnalysis = null }) {
   const { t } = useLocale();
   const localizedCatalog = buildCatalog(t);
   const [fileUrl, setFileUrl] = useState((localizedCatalog && localizedCatalog[0] && localizedCatalog[0].audioUrl) || '/audio/sample1.mp3');
@@ -265,6 +265,22 @@ export function EffectsLab({ workspaceAudio = null }) {
     setReverbSize(Math.max(0.8, Math.min(4.5, 1.2 + analysis.dynamicRangeDb / 8)));
   }
 
+  function saveCurrentAnalysis() {
+    if (!analysis || !saveAnalysis) return;
+    saveAnalysis({
+      module: 'Effects',
+      slug: 'effects',
+      title: `${analysis.estimatedKey} smart effects profile`,
+      source: workspaceAudio?.name || 'Effects audio',
+      metrics: [
+        { label: 'Cutoff', value: `${Math.round(cutoff)} Hz` },
+        { label: 'Wet', value: `${Math.round(wet * 100)}%` },
+        { label: 'Delay', value: `${delayTime.toFixed(2)}s` },
+        { label: 'Reverb', value: `${reverbSize.toFixed(1)}s` },
+      ],
+    });
+  }
+
   // helpers
   function makeDistortionCurve(amount) {
     const k = typeof amount === 'number' ? amount : 50;
@@ -313,6 +329,7 @@ export function EffectsLab({ workspaceAudio = null }) {
           <button className="btn" onClick={applySmartSettings} disabled={!analysis || analysisLoading}>
             {analysisLoading ? 'Analyzing...' : 'Smart settings'}
           </button>
+          <button className="btn" onClick={saveCurrentAnalysis} disabled={!analysis}>Save analysis</button>
         </div>
       </div>
 

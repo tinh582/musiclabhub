@@ -83,7 +83,7 @@ function clusterTracks(tracks, clusterCount = 3, iterations = 12) {
   });
 }
 
-export function AnalyticsLab() {
+export function AnalyticsLab({ saveAnalysis = null }) {
   const { t } = useLocale();
   const [dataset, setDataset] = useState(() => buildCatalog(t || ((k, f) => f)));
   const [selectedGenres, setSelectedGenres] = useState(null);
@@ -169,6 +169,22 @@ export function AnalyticsLab() {
     }
   }
 
+  function saveCurrentAnalysis() {
+    if (!filtered.length || !saveAnalysis) return;
+    saveAnalysis({
+      module: 'Analytics',
+      slug: 'analytics',
+      title: `${filtered.length}-track dataset analysis`,
+      source: 'Current dataset',
+      metrics: [
+        { label: 'Genres', value: String(Object.keys(byGenre).length) },
+        { label: 'Clusters', value: String(discoveredClusters.length) },
+        { label: 'Tempo min', value: `${tempoRange[0]} BPM` },
+        { label: 'Tempo max', value: `${tempoRange[1]} BPM` },
+      ],
+    });
+  }
+
   function downloadSVG(svgEl, name) {
     if (!svgEl) return;
     const serializer = new XMLSerializer();
@@ -219,6 +235,7 @@ export function AnalyticsLab() {
           <input type="file" accept=".csv,text/csv" onChange={handleFile} />
           <button className="btn" onClick={() => { if (tempoRef.current) downloadSVG(tempoRef.current, 'tempo.svg'); }}>{t('analytics.export.tempoSvg', 'Export Tempo SVG')}</button>
           <button className="btn" onClick={() => { if (tempoRef.current) downloadPNG(tempoRef.current, 'tempo.png'); }}>{t('analytics.export.tempoPng', 'Export Tempo PNG')}</button>
+          <button className="btn" onClick={saveCurrentAnalysis} disabled={!filtered.length}>Save analysis</button>
         </div>
       </div>
 
