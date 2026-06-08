@@ -259,7 +259,7 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null }) {
     const compressed = Math.min(1, Math.max(0, (8 - analysis.dynamicRangeDb) / 8));
     setCutoff(Math.round(1800 + brightness * 7200));
     setWet(Math.max(0.12, Math.min(0.58, 0.2 + (1 - noisy) * 0.24)));
-    setDelayTime(analysis.tempo ? Math.max(0.12, Math.min(0.6, 30 / analysis.tempo)) : 0.25);
+    setDelayTime(analysis.tempo && analysis.tempoConfidence >= 0.28 ? Math.max(0.12, Math.min(0.6, 30 / analysis.tempo)) : 0.25);
     setFeedback(Math.max(0.12, Math.min(0.48, 0.18 + (1 - compressed) * 0.18)));
     setDistortion(Math.max(0, Math.min(0.22, noisy * 0.08)));
     setReverbSize(Math.max(0.8, Math.min(4.5, 1.2 + analysis.dynamicRangeDb / 8)));
@@ -276,7 +276,7 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null }) {
         { label: 'Cutoff', value: `${Math.round(cutoff)} Hz` },
         { label: 'Wet', value: `${Math.round(wet * 100)}%` },
         { label: 'Delay', value: `${delayTime.toFixed(2)}s` },
-        { label: 'Reverb', value: `${reverbSize.toFixed(1)}s` },
+        { label: 'Tempo confidence', value: `${Math.round((analysis.tempoConfidence || 0) * 100)}%` },
       ],
     });
   }
@@ -359,9 +359,10 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null }) {
         {analysis ? (
           <div className="profile-strip" style={{ marginTop: 12 }}>
             <article className="profile-card"><p>Estimated key</p><strong>{analysis.estimatedKey}</strong></article>
+            <article className="profile-card"><p>Tempo</p><strong>{analysis.tempo ? `${analysis.tempo} BPM` : 'n/a'}</strong></article>
             <article className="profile-card"><p>Brightness</p><strong>{Math.round(analysis.spectralCentroid)} Hz</strong></article>
             <article className="profile-card"><p>Dynamic range</p><strong>{analysis.dynamicRangeDb.toFixed(1)} dB</strong></article>
-            <article className="profile-card"><p>Noisiness</p><strong>{Math.round(analysis.spectralFlatness * 100)}%</strong></article>
+            <article className="profile-card"><p>Tempo confidence</p><strong>{Math.round((analysis.tempoConfidence || 0) * 100)}%</strong></article>
           </div>
         ) : null}
 

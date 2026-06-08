@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { useLocale } from '../i18n/LocaleProvider';
 import { useNavigate } from 'react-router-dom';
+import { computeAudioBufferFeatures } from '../utils/audioFeatures';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://localhost:5174';
 
@@ -229,6 +230,10 @@ export function TranscriptionLab({ workspaceAudio = null, sendModuleHandoff = nu
     const audioBuffer = await audioCtxRef.current.decodeAudioData(arrayBuffer);
     bufferRef.current = audioBuffer;
     setBufferDuration(audioBuffer.duration);
+    const audioFeatures = computeAudioBufferFeatures(audioBuffer);
+    if (audioFeatures.tempo && audioFeatures.tempoConfidence >= 0.35) {
+      setTempo(audioFeatures.tempo);
+    }
     drawWaveform(audioBuffer);
     setXmlPreview('');
     setAnalysisSummary(null);

@@ -13,6 +13,20 @@ function toDb(value) {
   return 20 * Math.log10(value);
 }
 
+function getMonoData(buffer) {
+  const { numberOfChannels, length } = buffer;
+  if (numberOfChannels <= 1) return buffer.getChannelData(0);
+
+  const mono = new Float32Array(length);
+  for (let channel = 0; channel < numberOfChannels; channel += 1) {
+    const data = buffer.getChannelData(channel);
+    for (let i = 0; i < length; i += 1) {
+      mono[i] += data[i] / numberOfChannels;
+    }
+  }
+  return mono;
+}
+
 function fftMagnitudes(samples) {
   const size = samples.length;
   const real = new Float64Array(size);
@@ -106,51 +120,133 @@ function computeSpectralFeatures(data, sampleRate) {
   };
 }
 
-function estimateTempo(buffer, minBpm = 60, maxBpm = 180) {
-  const data = buffer.getChannelData(0);
-  const sampleRate = buffer.sampleRate;
+function median(values) {
+  if (!values.length) return 0;
+  const ordered = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(ordered.length / 2);
+  return ordered.length % 2 ? ordered[mid] : (ordered[mid - 1] + ordered[mid]) / 2;
+}
+
+function normalizeTempo(bpm, minBpm = 70, maxBpm = 180) {
+  let normalized = bpm;
+  while (normalized < minBpm) normalized *= 2;
+  while (normalized > maxBpm) normalized /= 2;
+  return normalized;
+}
+
+function estimateTempo(data, sampleRate, minBpm = 55, maxBpm = 210) {
   const frameSize = 1024;
   const hop = 512;
-  const env = [];
+  const flux = [];
+  let previous = null;
 
   for (let i = 0; i + frameSize < data.length; i += hop) {
-    let sum = 0;
-    for (let j = 0; j < frameSize; j += 1) {
-      const v = data[i + j];
-      sum += v * v;
+    const magnitudes = fftMagnitudes(data.subarray(i, i + frameSize));
+    let positiveFlux = 0;
+    if (previous) {
+      for (let bin = 1; bin < magnitudes.length; bin += 1) {
+        const frequency = (bin * sampleRate) / frameSize;
+        if (frequency < 40 || frequency > 5000) continue;
+        const diff = Math.log1p(magnitudes[bin]) - Math.log1p(previous[bin]);
+        if (diff > 0) positiveFlux += diff;
+      }
     }
-    env.push(Math.sqrt(sum / frameSize));
+    previous = magnitudes;
+    flux.push(positiveFlux);
   }
 
-  if (env.length < 8) return null;
+  if (flux.length < 16) return { tempo: null, confidence: 0, candidates: [] };
 
-  const mean = env.reduce((s, v) => s + v, 0) / env.length;
-  for (let i = 0; i < env.length; i += 1) env[i] -= mean;
+  const floor = median(flux);
+  const centered = flux.map((value) => Math.max(0, value - floor));
+  const maxFlux = Math.max(...centered);
+  if (!maxFlux) return { tempo: null, confidence: 0, candidates: [] };
+
+  const smoothed = centered.map((value, index) => {
+    const prev = centered[index - 1] || 0;
+    const next = centered[index + 1] || 0;
+    return (prev + value * 2 + next) / 4;
+  });
+
+  const peaks = [];
+  const threshold = median(smoothed) + (Math.max(...smoothed) - median(smoothed)) * 0.22;
+  for (let i = 1; i < smoothed.length - 1; i += 1) {
+    if (smoothed[i] >= threshold && smoothed[i] > smoothed[i - 1] && smoothed[i] >= smoothed[i + 1]) {
+      peaks.push(i);
+    }
+  }
 
   const envRate = sampleRate / hop;
   const minLag = Math.max(1, Math.floor((envRate * 60) / maxBpm));
-  const maxLag = Math.min(env.length - 1, Math.floor((envRate * 60) / minBpm));
+  const maxLag = Math.min(smoothed.length - 2, Math.ceil((envRate * 60) / minBpm));
+  const scores = [];
 
-  let bestLag = null;
-  let bestScore = -Infinity;
   for (let lag = minLag; lag <= maxLag; lag += 1) {
     let sum = 0;
-    for (let i = 0; i < env.length - lag; i += 1) {
-      sum += env[i] * env[i + lag];
+    let weight = 0;
+    for (let i = 0; i < smoothed.length - lag; i += 1) {
+      sum += smoothed[i] * smoothed[i + lag];
+      weight += smoothed[i] * smoothed[i];
     }
-    if (sum > bestScore) {
-      bestScore = sum;
-      bestLag = lag;
+    if (sum > 0) {
+      const rawBpm = (60 * envRate) / lag;
+      const bpm = normalizeTempo(rawBpm);
+      const preferredRangeBoost = bpm >= 80 && bpm <= 160 ? 1.08 : 1;
+      scores.push({ lag, bpm, rawBpm, score: (sum / Math.max(weight, 1e-9)) * preferredRangeBoost });
     }
   }
 
-  if (!bestLag) return null;
-  const bpm = (60 * envRate) / bestLag;
-  return Math.round(bpm);
+  const intervalBpms = [];
+  for (let i = 1; i < peaks.length; i += 1) {
+    const distance = peaks[i] - peaks[i - 1];
+    if (distance <= 0) continue;
+    const bpm = normalizeTempo((60 * envRate) / distance);
+    if (bpm >= 55 && bpm <= 210) intervalBpms.push(bpm);
+  }
+
+  if (intervalBpms.length >= 3) {
+    const peakMedian = median(intervalBpms);
+    scores.push({
+      lag: (60 * envRate) / peakMedian,
+      bpm: peakMedian,
+      rawBpm: peakMedian,
+      score: Math.min(1, intervalBpms.length / Math.max(8, peaks.length)) * 0.9,
+    });
+  }
+
+  if (!scores.length) return { tempo: null, confidence: 0, candidates: [] };
+
+  const merged = new Map();
+  scores.forEach((candidate) => {
+    const key = Math.round(candidate.bpm);
+    const current = merged.get(key) || { bpm: key, score: 0, votes: 0 };
+    current.score += candidate.score;
+    current.votes += 1;
+    merged.set(key, current);
+  });
+
+  const candidates = [...merged.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4);
+  const best = candidates[0];
+  const second = candidates[1];
+  const separation = second ? (best.score - second.score) / Math.max(best.score, 1e-9) : 1;
+  const peakDensity = Math.min(1, peaks.length / Math.max(12, smoothed.length / 8));
+  const confidence = Math.max(0.05, Math.min(0.98, (0.45 + separation * 0.35 + peakDensity * 0.2) * Math.min(1, best.score)));
+
+  return {
+    tempo: best.bpm,
+    confidence,
+    candidates: candidates.map((candidate) => ({
+      tempo: candidate.bpm,
+      score: candidate.score,
+      votes: candidate.votes,
+    })),
+  };
 }
 
-function computeFeatures(buffer) {
-  const data = buffer.getChannelData(0);
+export function computeAudioBufferFeatures(buffer) {
+  const data = getMonoData(buffer);
   let peak = 0;
   let sumSq = 0;
   let zeroCross = 0;
@@ -166,7 +262,7 @@ function computeFeatures(buffer) {
   }
 
   const rms = Math.sqrt(sumSq / data.length);
-  const tempo = estimateTempo(buffer);
+  const tempoEstimate = estimateTempo(data, buffer.sampleRate);
   const zcr = zeroCross / data.length;
   const spectral = computeSpectralFeatures(data, buffer.sampleRate);
   const crestFactor = rms ? peak / rms : 0;
@@ -179,7 +275,9 @@ function computeFeatures(buffer) {
     rms,
     rmsDb: toDb(rms),
     zeroCrossRate: zcr,
-    tempo,
+    tempo: tempoEstimate.tempo,
+    tempoConfidence: tempoEstimate.confidence,
+    tempoCandidates: tempoEstimate.candidates,
     crestFactor,
     dynamicRangeDb: Math.max(0, toDb(peak) - toDb(rms)),
     ...spectral,
@@ -195,7 +293,7 @@ export async function extractAudioFeatures(url) {
   const arrayBuffer = await res.arrayBuffer();
   const ctx = getAudioContext();
   const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-  const features = computeFeatures(audioBuffer);
+  const features = computeAudioBufferFeatures(audioBuffer);
   featureCache.set(url, features);
   return features;
 }
