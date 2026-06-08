@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useLocale } from '../i18n/LocaleProvider';
 import { useSiteContent } from '../hooks/useSiteContent';
 import { supabase } from '../lib/supabaseClient';
@@ -20,9 +20,9 @@ function getDisplayName(user) {
 
 export function Layout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { locale, setLocale, t } = useLocale();
   const { navigationItems } = useSiteContent();
-  const [showBrand, setShowBrand] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
   const [currentUserName, setCurrentUserName] = useState(null);
   const [workspaceAudio, setWorkspaceAudio] = useState(null);
@@ -41,16 +41,6 @@ export function Layout() {
     setCurrentUser(user?.email || null);
     setCurrentUserName(getDisplayName(user));
   };
-
-  useEffect(() => {
-    function onScroll() {
-      setShowBrand(window.scrollY < 24);
-    }
-
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
 
   useEffect(() => () => {
     if (workspaceUrlRef.current) URL.revokeObjectURL(workspaceUrlRef.current);
@@ -178,26 +168,26 @@ export function Layout() {
     return { ok: true };
   };
 
+  const activeNavigation = navigationItems.find((item) => (
+    item.path === '/'
+      ? location.pathname === '/'
+      : location.pathname.startsWith(item.path)
+  ));
+  const pageTitle = activeNavigation?.label
+    || (location.pathname === '/account' ? t('layout.account', 'Account') : null)
+    || (location.pathname === '/login' ? t('layout.login', 'Login') : null)
+    || t('layout.appName', 'Music Lab Hub');
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        {showBrand ? (
-          <div className="brand-block">
-            <div className="brand-mark">MLH</div>
-            <div>
-              <p className="eyebrow">{t('layout.brandTag', 'Interactive music toolkit')}</p>
-              <h1>{t('layout.appName', 'Music Lab Hub')}</h1>
-            </div>
+        <NavLink to="/" className="brand-block">
+          <div className="brand-mark">MLH</div>
+          <div>
+            <p className="eyebrow">{t('layout.brandTag', 'Interactive music toolkit')}</p>
+            <h1>{t('layout.appName', 'Music Lab Hub')}</h1>
           </div>
-        ) : (
-          <div className="brand-spacer" aria-hidden="true" />
-        )}
-
-        <div className="sidebar-auth">
-          <NavLink to={currentUser ? '/account' : '/login'} className="mini-button">
-            {currentUser ? t('layout.account', 'Account') : t('layout.login', 'Login')}
-          </NavLink>
-        </div>
+        </NavLink>
 
         <nav className="nav-list" aria-label={t('layout.nav.aria', 'Site navigation')}>
           {navigationItems.map((item) => (
@@ -208,21 +198,37 @@ export function Layout() {
               end={item.path === '/'}
             >
               <span>{item.label}</span>
-              <span className="nav-arrow">↗</span>
             </NavLink>
           ))}
         </nav>
+
+        <div className="sidebar-footer">
+          <NavLink to={currentUser ? '/account' : '/login'} className="nav-link account-link">
+            <span>{currentUserName || currentUser || t('layout.login', 'Login')}</span>
+          </NavLink>
+          <div className="locale-switch" aria-label={t('layout.language', 'Language')}>
+            <button type="button" className={locale === 'en' ? 'active' : ''} onClick={() => setLocale('en')}>EN</button>
+            <button type="button" className={locale === 'vi' ? 'active' : ''} onClick={() => setLocale('vi')}>VI</button>
+          </div>
+        </div>
       </aside>
 
       <main className="content-shell">
         <header className="topbar">
-          <div>
-            <p className="eyebrow">{t('layout.topbar.eyebrow', 'Vite + React + music systems')}</p>
-            <h2>{t('layout.topbar.title', 'One interface, nine music modules, and a clean thesis story.')}</h2>
+          <div className="topbar-title">
+            <p className="eyebrow">{t('layout.appName', 'Music Lab Hub')}</p>
+            <h2>{pageTitle}</h2>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <label className="mini-button workspace-upload">
-              <span>{workspaceAudio ? 'Replace song' : 'Upload song'}</span>
+          <div className="workspace-toolbar">
+            <div className={`workspace-source${workspaceAudio ? ' is-ready' : ''}`}>
+              <span className="workspace-source__status" aria-hidden="true" />
+              <span className="workspace-source__copy">
+                <small>{workspaceAudio ? 'Workspace song' : 'No song selected'}</small>
+                <strong title={workspaceAudio?.name}>{workspaceAudio?.name || 'Upload audio to begin'}</strong>
+              </span>
+            </div>
+            <label className="mini-button workspace-upload" title={workspaceAudio ? 'Replace workspace song' : 'Upload workspace song'}>
+              <span>{workspaceAudio ? 'Replace' : 'Upload'}</span>
               <input
                 type="file"
                 accept="audio/*"
@@ -233,37 +239,14 @@ export function Layout() {
               />
             </label>
             {workspaceAudio ? (
-              <>
-                <span className="topbar-chip" title={workspaceAudio.name}>{workspaceAudio.name}</span>
-                <button type="button" className="mini-button" onClick={clearWorkspaceAudio}>Clear</button>
-              </>
+              <button type="button" className="mini-button" onClick={clearWorkspaceAudio}>Clear</button>
             ) : null}
             {moduleHandoff ? (
-              <span className="topbar-chip" title={`Sent from ${moduleHandoff.source}`}>
-                Handoff: {moduleHandoff.type}
-              </span>
+              <span className="handoff-status" title={`Sent from ${moduleHandoff.source}`}>{moduleHandoff.type} ready</span>
             ) : null}
-            <button type="button" className="mini-button" onClick={() => setHistoryOpen((open) => !open)}>
+            <button type="button" className={`mini-button${historyOpen ? ' active' : ''}`} onClick={() => setHistoryOpen((open) => !open)}>
               History {analysisHistory.length ? `(${analysisHistory.length})` : ''}
             </button>
-            <span className="topbar-chip">{t('layout.topbar.status', 'Ready for prototyping')}</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span className="eyebrow" style={{ margin: 0 }}>{t('layout.language', 'Language')}</span>
-              <button
-                type="button"
-                className={`mini-button${locale === 'en' ? ' active' : ''}`}
-                onClick={() => setLocale('en')}
-              >
-                {t('layout.language.en', 'English')}
-              </button>
-              <button
-                type="button"
-                className={`mini-button${locale === 'vi' ? ' active' : ''}`}
-                onClick={() => setLocale('vi')}
-              >
-                {t('layout.language.vi', 'Vietnamese')}
-              </button>
-            </div>
           </div>
         </header>
 
