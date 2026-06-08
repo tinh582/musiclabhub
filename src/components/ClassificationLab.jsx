@@ -28,7 +28,8 @@ function deriveTrackFeatures(audioInfo, fallbackTempo = 96) {
   };
 }
 
-function formatTempoInfo(audioInfo) {
+function formatTempoInfo(audioInfo, selected, customSource) {
+  if (!customSource && selected?.tempo) return `${Math.round(selected.tempo)} BPM (catalog)`;
   if (!audioInfo?.tempo) return 'n/a';
   const confidence = Math.round((audioInfo.tempoConfidence || 0) * 100);
   const suffix = confidence ? ` (${confidence}% confidence)` : '';
@@ -478,8 +479,8 @@ export function ClassificationLab({ workspaceAudio = null, saveAnalysis = null }
                 <span style={{ color: 'var(--muted)' }}>{t('class.duration', 'Duration')}: {audioLoading || !audioInfo ? t('class.loading', 'Loading...') : formatDuration(audioInfo.duration)}</span>
                 <span style={{ color: 'var(--muted)' }}>{t('class.peak', 'Peak')}: {audioLoading || !audioInfo ? t('class.loading', 'Loading...') : `${audioInfo.peakDb.toFixed(1)} dB`}</span>
                 <span style={{ color: 'var(--muted)' }}>{t('class.rms', 'RMS')}: {audioLoading || !audioInfo ? t('class.loading', 'Loading...') : `${audioInfo.rmsDb.toFixed(1)} dB`}</span>
-                <span style={{ color: 'var(--muted)' }}>{t('class.tempo', 'Tempo')}: {audioLoading || !audioInfo ? t('class.loading', 'Loading...') : formatTempoInfo(audioInfo)}</span>
-                {audioInfo?.tempoCandidates?.length ? (
+                <span style={{ color: 'var(--muted)' }}>{t('class.tempo', 'Tempo')}: {audioLoading || !audioInfo ? t('class.loading', 'Loading...') : formatTempoInfo(audioInfo, selected, customSource)}</span>
+                {customSource && audioInfo?.tempoCandidates?.length ? (
                   <span style={{ color: 'var(--muted)' }}>Alternates: {audioInfo.tempoCandidates.slice(1, 4).map((item) => `${item.tempo} BPM`).join(', ') || 'none'}</span>
                 ) : null}
               </div>

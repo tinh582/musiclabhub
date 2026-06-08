@@ -134,6 +134,12 @@ function normalizeTempo(bpm, minBpm = 70, maxBpm = 180) {
   return normalized;
 }
 
+function tempoPlausibility(bpm) {
+  if (bpm >= 92 && bpm <= 176) return 1.16;
+  if (bpm >= 76 && bpm <= 192) return 1.06;
+  return 1;
+}
+
 function estimateTempo(data, sampleRate, minBpm = 55, maxBpm = 210) {
   const frameSize = 1024;
   const hop = 512;
@@ -191,8 +197,18 @@ function estimateTempo(data, sampleRate, minBpm = 55, maxBpm = 210) {
     if (sum > 0) {
       const rawBpm = (60 * envRate) / lag;
       const bpm = normalizeTempo(rawBpm);
-      const preferredRangeBoost = bpm >= 80 && bpm <= 160 ? 1.08 : 1;
-      scores.push({ lag, bpm, rawBpm, score: (sum / Math.max(weight, 1e-9)) * preferredRangeBoost });
+      const score = sum / Math.max(weight, 1e-9);
+      scores.push({ lag, bpm, rawBpm, score: score * tempoPlausibility(bpm) });
+
+      const doubleBpm = rawBpm * 2;
+      if (doubleBpm >= minBpm && doubleBpm <= maxBpm) {
+        scores.push({ lag: lag / 2, bpm: Math.round(doubleBpm), rawBpm: doubleBpm, score: score * 0.92 * tempoPlausibility(doubleBpm) });
+      }
+
+      const halfBpm = rawBpm / 2;
+      if (halfBpm >= minBpm && halfBpm <= maxBpm) {
+        scores.push({ lag: lag * 2, bpm: Math.round(halfBpm), rawBpm: halfBpm, score: score * 0.72 * tempoPlausibility(halfBpm) });
+      }
     }
   }
 
@@ -202,6 +218,7 @@ function estimateTempo(data, sampleRate, minBpm = 55, maxBpm = 210) {
     if (distance <= 0) continue;
     const bpm = normalizeTempo((60 * envRate) / distance);
     if (bpm >= 55 && bpm <= 210) intervalBpms.push(bpm);
+    if (bpm * 2 >= 55 && bpm * 2 <= 210) intervalBpms.push(bpm * 2);
   }
 
   if (intervalBpms.length >= 3) {
@@ -234,8 +251,16 @@ function estimateTempo(data, sampleRate, minBpm = 55, maxBpm = 210) {
   const peakDensity = Math.min(1, peaks.length / Math.max(12, smoothed.length / 8));
   const confidence = Math.max(0.05, Math.min(0.98, (0.45 + separation * 0.35 + peakDensity * 0.2) * Math.min(1, best.score)));
 
+  let selected = best;
+  if (best.bpm < 105) {
+    const doubleCandidate = candidates.find((candidate) => Math.abs(candidate.bpm - best.bpm * 2) <= 3);
+    if (doubleCandidate && doubleCandidate.score >= best.score * 0.68) {
+      selected = doubleCandidate;
+    }
+  }
+
   return {
-    tempo: best.bpm,
+    tempo: selected.bpm,
     confidence,
     candidates: candidates.map((candidate) => ({
       tempo: candidate.bpm,
