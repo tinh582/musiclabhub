@@ -203,9 +203,6 @@ export function Layout() {
         </nav>
 
         <div className="sidebar-footer">
-          <NavLink to={currentUser ? '/account' : '/login'} className="nav-link account-link">
-            <span>{currentUserName || currentUser || t('layout.login', 'Login')}</span>
-          </NavLink>
           <div className="locale-switch" aria-label={t('layout.language', 'Language')}>
             <button type="button" className={locale === 'en' ? 'active' : ''} onClick={() => setLocale('en')}>EN</button>
             <button type="button" className={locale === 'vi' ? 'active' : ''} onClick={() => setLocale('vi')}>VI</button>
@@ -220,33 +217,38 @@ export function Layout() {
             <h2>{pageTitle}</h2>
           </div>
           <div className="workspace-toolbar">
-            <div className={`workspace-source${workspaceAudio ? ' is-ready' : ''}`}>
-              <span className="workspace-source__status" aria-hidden="true" />
-              <span className="workspace-source__copy">
-                <small>{workspaceAudio ? 'Workspace song' : 'No song selected'}</small>
-                <strong title={workspaceAudio?.name}>{workspaceAudio?.name || 'Upload audio to begin'}</strong>
-              </span>
+            <div className="workspace-picker">
+              <div className={`workspace-source${workspaceAudio ? ' is-ready' : ''}`}>
+                <span className="workspace-source__status" aria-hidden="true" />
+                <span className="workspace-source__copy">
+                  <small>{workspaceAudio ? 'Workspace song' : 'No song selected'}</small>
+                  <strong title={workspaceAudio?.name}>{workspaceAudio?.name || 'Upload audio to begin'}</strong>
+                </span>
+              </div>
+              <label className="mini-button workspace-upload" title={workspaceAudio ? 'Replace workspace song' : 'Upload workspace song'}>
+                <span>{workspaceAudio ? 'Replace' : 'Upload'}</span>
+                <input
+                  type="file"
+                  accept="audio/*"
+                  onChange={(event) => {
+                    selectWorkspaceAudio(event.target.files?.[0]);
+                    event.target.value = '';
+                  }}
+                />
+              </label>
+              {workspaceAudio ? (
+                <button type="button" className="mini-button" onClick={clearWorkspaceAudio}>Clear</button>
+              ) : null}
             </div>
-            <label className="mini-button workspace-upload" title={workspaceAudio ? 'Replace workspace song' : 'Upload workspace song'}>
-              <span>{workspaceAudio ? 'Replace' : 'Upload'}</span>
-              <input
-                type="file"
-                accept="audio/*"
-                onChange={(event) => {
-                  selectWorkspaceAudio(event.target.files?.[0]);
-                  event.target.value = '';
-                }}
-              />
-            </label>
-            {workspaceAudio ? (
-              <button type="button" className="mini-button" onClick={clearWorkspaceAudio}>Clear</button>
-            ) : null}
             {moduleHandoff ? (
               <span className="handoff-status" title={`Sent from ${moduleHandoff.source}`}>{moduleHandoff.type} ready</span>
             ) : null}
             <button type="button" className={`mini-button${historyOpen ? ' active' : ''}`} onClick={() => setHistoryOpen((open) => !open)}>
               History {analysisHistory.length ? `(${analysisHistory.length})` : ''}
             </button>
+            <NavLink to={currentUser ? '/account' : '/login'} className="mini-button account-toplink">
+              {currentUserName || currentUser || t('layout.login', 'Login')}
+            </NavLink>
           </div>
         </header>
 
