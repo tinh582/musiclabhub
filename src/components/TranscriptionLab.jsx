@@ -231,7 +231,7 @@ export function TranscriptionLab({ workspaceAudio = null, sendModuleHandoff = nu
     bufferRef.current = audioBuffer;
     setBufferDuration(audioBuffer.duration);
     const audioFeatures = computeAudioBufferFeatures(audioBuffer);
-    if (audioFeatures.tempo && audioFeatures.tempoConfidence >= 0.35) {
+    if (audioFeatures.tempo) {
       setTempo(audioFeatures.tempo);
     }
     drawWaveform(audioBuffer);

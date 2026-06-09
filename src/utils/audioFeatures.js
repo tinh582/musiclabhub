@@ -1,3 +1,5 @@
+import MusicTempo from 'music-tempo';
+
 const featureCache = new Map();
 let sharedCtx = null;
 
@@ -127,6 +129,21 @@ function median(values) {
   return ordered.length % 2 ? ordered[mid] : (ordered[mid - 1] + ordered[mid]) / 2;
 }
 
+function resampleMono(data, sourceRate, targetRate = 44100) {
+  if (sourceRate === targetRate) return data;
+  const targetLength = Math.max(1, Math.round(data.length * targetRate / sourceRate));
+  const output = new Float32Array(targetLength);
+  const ratio = sourceRate / targetRate;
+  for (let i = 0; i < targetLength; i += 1) {
+    const position = i * ratio;
+    const left = Math.floor(position);
+    const right = Math.min(data.length - 1, left + 1);
+    const mix = position - left;
+    output[i] = data[left] * (1 - mix) + data[right] * mix;
+  }
+  return output;
+}
+
 function normalizeTempo(bpm, minBpm = 70, maxBpm = 180) {
   let normalized = bpm;
   while (normalized < minBpm) normalized *= 2;
@@ -134,7 +151,7 @@ function normalizeTempo(bpm, minBpm = 70, maxBpm = 180) {
   return normalized;
 }
 
-function estimateTempo(data, sampleRate, minBpm = 55, maxBpm = 210) {
+function estimateTempoFallback(data, sampleRate, minBpm = 55, maxBpm = 210) {
   const frameSize = 1024;
   const hop = 512;
   const flux = [];
@@ -245,6 +262,30 @@ function estimateTempo(data, sampleRate, minBpm = 55, maxBpm = 210) {
   };
 }
 
+function estimateTempo(data, sampleRate) {
+  try {
+    const analysisData = resampleMono(data, sampleRate, 44100);
+    const analysis = new MusicTempo(analysisData);
+    const tempo = Number(analysis.tempo);
+    if (Number.isFinite(tempo) && tempo >= 40 && tempo <= 240) {
+      return {
+        tempo: Math.round(tempo),
+        beatTimes: Array.isArray(analysis.beats) ? analysis.beats : [],
+        method: 'music-tempo-beatroot',
+      };
+    }
+  } catch (error) {
+    console.warn('BeatRoot tempo analysis failed; using local fallback.', error);
+  }
+
+  const fallback = estimateTempoFallback(data, sampleRate);
+  return {
+    tempo: fallback.tempo,
+    beatTimes: [],
+    method: 'spectral-flux-fallback',
+  };
+}
+
 export function computeAudioBufferFeatures(buffer) {
   const data = getMonoData(buffer);
   let peak = 0;
@@ -276,8 +317,8 @@ export function computeAudioBufferFeatures(buffer) {
     rmsDb: toDb(rms),
     zeroCrossRate: zcr,
     tempo: tempoEstimate.tempo,
-    tempoConfidence: tempoEstimate.confidence,
-    tempoCandidates: tempoEstimate.candidates,
+    tempoMethod: tempoEstimate.method,
+    beatTimes: tempoEstimate.beatTimes,
     crestFactor,
     dynamicRangeDb: Math.max(0, toDb(peak) - toDb(rms)),
     ...spectral,

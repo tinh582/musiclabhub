@@ -12,7 +12,7 @@ function clamp(value, min, max) {
 
 function deriveTrackFeatures(audioInfo, fallbackTempo = 96) {
   if (!audioInfo) return null;
-  const tempo = audioInfo.tempoConfidence >= 0.28 && audioInfo.tempo ? audioInfo.tempo : fallbackTempo;
+  const tempo = audioInfo.tempo || fallbackTempo;
   const energy = clamp((audioInfo.rmsDb + 42) / 34, 0.08, 0.96);
   const peakLift = clamp((audioInfo.peakDb + 24) / 24, 0, 1);
   const tempoPulse = clamp(1 - Math.abs(tempo - 118) / 82, 0.12, 0.98);
@@ -31,9 +31,7 @@ function deriveTrackFeatures(audioInfo, fallbackTempo = 96) {
 function formatTempoInfo(audioInfo, selected, customSource) {
   if (!customSource && selected?.tempo) return `${Math.round(selected.tempo)} BPM (catalog)`;
   if (!audioInfo?.tempo) return 'n/a';
-  const confidence = Math.round((audioInfo.tempoConfidence || 0) * 100);
-  const suffix = confidence ? ` (${confidence}% confidence)` : '';
-  return `${audioInfo.tempo} BPM${suffix}`;
+  return `${audioInfo.tempo} BPM`;
 }
 
 export function ClassificationLab({ workspaceAudio = null, saveAnalysis = null }) {
@@ -480,9 +478,6 @@ export function ClassificationLab({ workspaceAudio = null, saveAnalysis = null }
                 <span style={{ color: 'var(--muted)' }}>{t('class.peak', 'Peak')}: {audioLoading || !audioInfo ? t('class.loading', 'Loading...') : `${audioInfo.peakDb.toFixed(1)} dB`}</span>
                 <span style={{ color: 'var(--muted)' }}>{t('class.rms', 'RMS')}: {audioLoading || !audioInfo ? t('class.loading', 'Loading...') : `${audioInfo.rmsDb.toFixed(1)} dB`}</span>
                 <span style={{ color: 'var(--muted)' }}>{t('class.tempo', 'Tempo')}: {audioLoading || !audioInfo ? t('class.loading', 'Loading...') : formatTempoInfo(audioInfo, selected, customSource)}</span>
-                {customSource && audioInfo?.tempoCandidates?.length ? (
-                  <span style={{ color: 'var(--muted)' }}>Alternates: {audioInfo.tempoCandidates.slice(1, 4).map((item) => `${item.tempo} BPM`).join(', ') || 'none'}</span>
-                ) : null}
               </div>
             </div>
 

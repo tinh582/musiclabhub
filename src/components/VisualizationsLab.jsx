@@ -329,7 +329,8 @@ export function VisualizationsLab({ workspaceAudio = null, saveAnalysis = null }
       source: loadedLabel,
       metrics: [
         { label: 'Tempo', value: audioProfile.tempo ? `${audioProfile.tempo} BPM` : 'n/a' },
-        { label: 'Tempo confidence', value: `${Math.round((audioProfile.tempoConfidence || 0) * 100)}%` },
+        { label: 'Brightness', value: `${Math.round(audioProfile.spectralCentroid)} Hz` },
+        { label: 'Dynamics', value: `${audioProfile.dynamicRangeDb.toFixed(1)} dB` },
         { label: 'Texture', value: audioProfile.spectralFlatness > 0.22 ? 'Noisy' : 'Tonal' },
       ],
     });
@@ -515,7 +516,6 @@ export function VisualizationsLab({ workspaceAudio = null, saveAnalysis = null }
               <div className="practice-log">
                 <div className="practice-log__item"><strong>Key</strong><span>{audioProfile.estimatedKey}</span></div>
                 <div className="practice-log__item"><strong>Tempo</strong><span>{audioProfile.tempo ? `${audioProfile.tempo} BPM` : 'n/a'}</span></div>
-                <div className="practice-log__item"><strong>Tempo confidence</strong><span>{Math.round((audioProfile.tempoConfidence || 0) * 100)}%</span></div>
                 <div className="practice-log__item"><strong>Brightness</strong><span>{Math.round(audioProfile.spectralCentroid)} Hz</span></div>
                 <div className="practice-log__item"><strong>Texture</strong><span>{audioProfile.spectralFlatness > 0.22 ? 'Noisy' : audioProfile.spectralCentroid > 2600 ? 'Bright' : 'Warm'}</span></div>
               </div>
