@@ -12,16 +12,23 @@ const rootDir = path.resolve(__dirname, '..');
 
 dotenv.config({ path: path.resolve(__dirname, '.env') });
 
-const app = express();
 const port = Number(process.env.PORT || 5174);
-const clientOrigin = process.env.CLIENT_ORIGIN || 'https://localhost:5173';
+const clientOrigins = (process.env.CLIENT_ORIGIN || 'https://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 const redirectUri = process.env.SPOTIFY_REDIRECT_URI || 'https://localhost:5173/callback';
-const authScopes = process.env.SPOTIFY_SCOPES || '-user-read-email usertop-read';
+const authScopes = process.env.SPOTIFY_SCOPES || 'user-read-email user-top-read';
 const transcriptionServiceUrl = process.env.TRANSCRIPTION_SERVICE_URL || 'http://127.0.0.1:8000';
 const useHttps = process.env.USE_HTTPS === 'true';
+const upstreamTimeoutMs = Number(process.env.UPSTREAM_TIMEOUT_MS || 15000);
+const app = express();
 
 app.use(cors({
-  origin: clientOrigin,
+  origin(origin, callback) {
+    if (!origin || clientOrigins.includes(origin)) callback(null, true);
+    else callback(new Error('Origin not allowed by CORS.'));
+  },
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: [
     'Content-Type',
@@ -32,6 +39,15 @@ app.use(cors({
     'X-Tempo',
   ],
 }));
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  const requestId = req.headers['x-request-id'] || crypto.randomUUID();
+  res.set('X-Request-Id', requestId);
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set('Referrer-Policy', 'no-referrer');
+  req.requestId = requestId;
+  next();
+});
 
 let cachedToken = null;
 let cachedExpiry = 0;
@@ -121,12 +137,33 @@ async function fetchJson(url, token, options = {}) {
 }
 
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true });
+  res.json({
+    ok: true,
+    status: 'healthy',
+    uptimeSeconds: Math.round(process.uptime()),
+    timestamp: new Date().toISOString(),
+    requestId: req.requestId,
+  });
+});
+
+app.get('/api/ready', (req, res) => {
+  const spotifyConfigured = Boolean(process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET);
+  res.json({
+    ok: true,
+    status: 'ready',
+    services: {
+      spotify: spotifyConfigured ? 'configured' : 'optional-unconfigured',
+      transcription: transcriptionServiceUrl ? 'configured' : 'unconfigured',
+    },
+    requestId: req.requestId,
+  });
 });
 
 app.get('/api/transcription/health', async (req, res) => {
   try {
-    const response = await fetch(`${transcriptionServiceUrl}/api/health`);
+    const response = await fetch(`${transcriptionServiceUrl}/api/health`, {
+      signal: AbortSignal.timeout(upstreamTimeoutMs),
+    });
     const payload = await response.json();
     res.status(response.status).json(payload);
   } catch (error) {
@@ -149,6 +186,10 @@ app.get('/api/transcription/analyze', (req, res) => {
 
 app.post('/api/transcription/analyze', express.raw({ type: '*/*', limit: '25mb' }), async (req, res) => {
   try {
+    if (!req.body?.length) {
+      res.status(400).json({ ok: false, error: 'Audio request body is empty.', requestId: req.requestId });
+      return;
+    }
     const response = await fetch(`${transcriptionServiceUrl}/api/transcription/analyze`, {
       method: 'POST',
       headers: {
@@ -158,6 +199,7 @@ app.post('/api/transcription/analyze', express.raw({ type: '*/*', limit: '25mb' 
         'X-File-Name': req.headers['x-file-name'] || '',
       },
       body: req.body,
+      signal: AbortSignal.timeout(upstreamTimeoutMs),
     });
 
     const text = await response.text();
@@ -165,11 +207,12 @@ app.post('/api/transcription/analyze', express.raw({ type: '*/*', limit: '25mb' 
     res.set('Content-Type', response.headers.get('content-type') || 'application/json');
     res.send(text);
   } catch (error) {
-    res.status(503).json({
+    res.status(error.name === 'TimeoutError' ? 504 : 503).json({
       ok: false,
       error: error.message || 'Transcription service unavailable.',
       transcriptionServiceUrl,
       hint: 'Python transcription service is unreachable from this server. Configure TRANSCRIPTION_SERVICE_URL.',
+      requestId: req.requestId,
     });
   }
 });
@@ -527,6 +570,41 @@ app.get('/api/spotify/recommendations', async (req, res) => {
   }
 });
 
+const distDir = path.resolve(rootDir, 'dist');
+if (process.env.NODE_ENV === 'production' && fs.existsSync(distDir)) {
+  app.use(express.static(distDir, {
+    maxAge: '1h',
+    setHeaders(res, filePath) {
+      if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+        res.set('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    },
+  }));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/')) {
+      next();
+      return;
+    }
+    res.sendFile(path.join(distDir, 'index.html'));
+  });
+}
+
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'API route not found.', requestId: req.requestId });
+});
+
+app.use((error, req, res, next) => {
+  if (res.headersSent) {
+    next(error);
+    return;
+  }
+  console.error(`[${req.requestId || 'unknown'}]`, error);
+  res.status(error.message === 'Origin not allowed by CORS.' ? 403 : 500).json({
+    error: error.message === 'Origin not allowed by CORS.' ? error.message : 'Internal server error.',
+    requestId: req.requestId,
+  });
+});
+
 function resolveCertPath(value, fallback) {
   const selected = value || fallback;
   return path.isAbsolute(selected) ? selected : path.resolve(rootDir, selected);
@@ -535,8 +613,9 @@ function resolveCertPath(value, fallback) {
 const keyPath = resolveCertPath(process.env.SSL_KEY_PATH, 'localhost+2-key.pem');
 const certPath = resolveCertPath(process.env.SSL_CERT_PATH, 'localhost+2.pem');
 
+let server;
 if (useHttps) {
-  https.createServer(
+  server = https.createServer(
     {
       key: fs.readFileSync(keyPath),
       cert: fs.readFileSync(certPath),
@@ -546,7 +625,22 @@ if (useHttps) {
     console.log(`Spotify backend running at https://localhost:${port}`);
   });
 } else {
-  app.listen(port, '0.0.0.0', () => {
+  server = app.listen(port, '0.0.0.0', () => {
     console.log(`Spotify backend running at http://0.0.0.0:${port}`);
   });
 }
+
+function shutdown(signal) {
+  console.log(`${signal} received; closing HTTP server.`);
+  const forceExit = setTimeout(() => process.exit(1), 10000);
+  forceExit.unref();
+  server.close((error) => {
+    clearTimeout(forceExit);
+    process.exit(error ? 1 : 0);
+  });
+}
+
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGINT', () => shutdown('SIGINT'));
+
+export { app };

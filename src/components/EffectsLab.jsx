@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CATALOG, buildCatalog } from '../data/catalog';
 import { useLocale } from '../i18n/LocaleProvider';
 import { useAudioFeatures } from '../hooks/useAudioFeatures';
+import { equalPowerMix, processingHeadroom, PROCESSING_QUALITY, qualityConfig } from '../utils/audioProcessing';
 
 export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleHandoff = null, clearModuleHandoff = null }) {
   const { t } = useLocale();
@@ -15,6 +16,8 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleH
   const [cutoff, setCutoff] = useState(1200);
   const [distortion, setDistortion] = useState(0);
   const [reverbSize, setReverbSize] = useState(2.5);
+  const [quality, setQuality] = useState('balanced');
+  const [outputLevel, setOutputLevel] = useState(0.92);
   const [downloadUrl, setDownloadUrl] = useState(null);
   const [audioError, setAudioError] = useState(null);
   const [audioKey, setAudioKey] = useState(0);
@@ -28,6 +31,7 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleH
   const unlockedRef = useRef(false);
   const recorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
+  const reverbSignatureRef = useRef('');
 
   useEffect(() => {
     return () => {
@@ -55,6 +59,8 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleH
     if (Number.isFinite(snapshot.cutoff)) setCutoff(snapshot.cutoff);
     if (Number.isFinite(snapshot.distortion)) setDistortion(snapshot.distortion);
     if (Number.isFinite(snapshot.reverbSize)) setReverbSize(snapshot.reverbSize);
+    if (snapshot.quality && PROCESSING_QUALITY[snapshot.quality]) setQuality(snapshot.quality);
+    if (Number.isFinite(snapshot.outputLevel)) setOutputLevel(snapshot.outputLevel);
     clearModuleHandoff?.();
   }, [moduleHandoff, clearModuleHandoff]);
 
@@ -72,6 +78,8 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleH
       const wetGain = Ctx.createGain();
       const dryGain = Ctx.createGain();
       const master = Ctx.createGain();
+      const compressor = Ctx.createDynamicsCompressor();
+      const output = Ctx.createGain();
 
       const delay = Ctx.createDelay(5.0);
       const fb = Ctx.createGain();
@@ -85,16 +93,22 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleH
 
       const shaper = Ctx.createWaveShaper();
       const convolver = Ctx.createConvolver();
+      compressor.threshold.value = -6;
+      compressor.knee.value = 12;
+      compressor.ratio.value = 6;
+      compressor.attack.value = 0.003;
+      compressor.release.value = 0.18;
 
-      nodesRef.current = { wetGain, dryGain, master, delay, fb, biquad, shaper, convolver };
+      nodesRef.current = { wetGain, dryGain, master, compressor, output, delay, fb, biquad, shaper, convolver };
 
       wetGain.connect(master);
       dryGain.connect(master);
-
-      master.connect(Ctx.destination);
+      master.connect(compressor);
+      compressor.connect(output);
+      output.connect(Ctx.destination);
 
       const msDest = Ctx.createMediaStreamDestination();
-      master.connect(msDest);
+      output.connect(msDest);
       nodesRef.current.mediaStream = msDest.stream;
     }
   }
@@ -102,13 +116,27 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleH
   function setParams() {
     const n = nodesRef.current;
     if (!n || !n.wetGain) return;
-    if (n.wetGain.gain) n.wetGain.gain.value = wet;
-    if (n.dryGain.gain) n.dryGain.gain.value = 1 - wet;
-    if (n.delay && n.delay.delayTime) n.delay.delayTime.value = delayTime;
-    if (n.fb && n.fb.gain) n.fb.gain.value = feedback;
-    if (n.biquad) n.biquad.frequency.value = cutoff;
-    if (n.shaper) n.shaper.curve = makeDistortionCurve(distortion * 400);
-    if (n.convolver) n.convolver.buffer = makeReverbBuffer(ctxRef.current, reverbSize);
+    const config = qualityConfig(quality);
+    const now = ctxRef.current.currentTime;
+    const mix = equalPowerMix(wet);
+    const smooth = (param, value) => {
+      param.cancelScheduledValues(now);
+      param.setTargetAtTime(value, now, config.smoothingSeconds);
+    };
+    smooth(n.wetGain.gain, mix.wet);
+    smooth(n.dryGain.gain, mix.dry);
+    smooth(n.delay.delayTime, delayTime);
+    smooth(n.fb.gain, Math.min(0.82, feedback));
+    smooth(n.biquad.frequency, cutoff);
+    smooth(n.output.gain, Math.min(outputLevel, processingHeadroom(distortion, feedback)));
+    n.shaper.curve = distortion > 0.001 ? makeDistortionCurve(distortion * 400) : null;
+    n.shaper.oversample = config.oversample;
+
+    const reverbSignature = `${quality}-${reverbSize.toFixed(1)}`;
+    if (reverbSignatureRef.current !== reverbSignature) {
+      n.convolver.buffer = makeReverbBuffer(ctxRef.current, reverbSize, config);
+      reverbSignatureRef.current = reverbSignature;
+    }
   }
 
   function ensureUnlocked() {
@@ -178,14 +206,13 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleH
       }
     }
 
-    // route: src -> biquad -> shaper -> convolver -> wetGain
+    // Dry stays untouched; effects are isolated on the wet path.
+    srcNodeRef.current.connect(n.dryGain);
     srcNodeRef.current.connect(n.biquad);
     n.biquad.connect(n.shaper);
     n.shaper.connect(n.convolver);
     n.convolver.connect(n.wetGain);
-    // dry path
-    n.biquad.connect(n.dryGain);
-    // delay path
+    // Parallel delay feeds the wet bus.
     n.biquad.connect(n.delay);
     n.delay.connect(n.wetGain);
 
@@ -225,7 +252,6 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleH
       audioRef.current.load();
       setIsPlaying(false);
       setAudioError(null);
-      attachedRef.current = false;
     }
   }, [fileUrl]);
 
@@ -287,9 +313,9 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleH
       source: workspaceAudio?.name || 'Effects audio',
       metrics: [
         { label: 'Key', value: analysis.estimatedKey },
-        { label: 'First chord', value: analysis.chordTimeline?.[0]?.chord || 'n/a' },
+        { label: 'Quality', value: qualityConfig(quality).label },
         { label: 'Wet', value: `${Math.round(wet * 100)}%` },
-        { label: 'Reverb', value: `${reverbSize.toFixed(1)}s` },
+        { label: 'Output', value: `${Math.round(Math.min(outputLevel, processingHeadroom(distortion, feedback)) * 100)}%` },
       ],
       snapshot: {
         fileUrl: fileUrl.startsWith('blob:') ? '' : fileUrl,
@@ -299,6 +325,8 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleH
         cutoff,
         distortion,
         reverbSize,
+        quality,
+        outputLevel,
       },
     });
   }
@@ -316,19 +344,22 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleH
     return curve;
   }
 
-  function makeReverbBuffer(ctx, seconds = 2.5) {
+  function makeReverbBuffer(ctx, seconds = 2.5, config = qualityConfig('balanced')) {
     if (!ctx) return null;
     const rate = ctx.sampleRate;
     const len = rate * seconds;
-    const buffer = ctx.createBuffer(2, len, rate);
-    for (let ch = 0; ch < 2; ch++) {
+    const buffer = ctx.createBuffer(config.impulseChannels, len, rate);
+    for (let ch = 0; ch < config.impulseChannels; ch++) {
       const arr = buffer.getChannelData(ch);
-      for (let i = 0; i < len; i++) arr[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+      for (let i = 0; i < len; i++) {
+        const noise = Math.random() <= config.impulseDensity ? Math.random() * 2 - 1 : 0;
+        arr[i] = noise * Math.pow(1 - i / len, 3);
+      }
     }
     return buffer;
   }
 
-  useEffect(() => setParams(), [wet, delayTime, feedback, cutoff, distortion, reverbSize]);
+  useEffect(() => setParams(), [wet, delayTime, feedback, cutoff, distortion, reverbSize, quality, outputLevel]);
 
   return (
     <section className="effects-lab">
@@ -339,8 +370,9 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleH
         </div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input type="file" accept="audio/*" onChange={handleFileInput} />
-          <select onChange={(e) => pickCatalog(Number(e.target.value))} defaultValue="">
+          <label className="sr-only" htmlFor="effects-file">Upload audio for effects</label>
+          <input id="effects-file" type="file" accept="audio/*" onChange={handleFileInput} />
+          <select aria-label="Select catalog sample" onChange={(e) => pickCatalog(Number(e.target.value))} defaultValue="">
             <option value="">Select sample from catalog</option>
             {CATALOG.map((t, i) => (<option key={t.title + i} value={i}>{t.title} — {t.artist}</option>))}
           </select>
@@ -385,6 +417,8 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleH
             <article className="profile-card"><p>Brightness</p><strong>{Math.round(analysis.spectralCentroid)} Hz</strong></article>
             <article className="profile-card"><p>Dynamic range</p><strong>{analysis.dynamicRangeDb.toFixed(1)} dB</strong></article>
             <article className="profile-card"><p>Noisiness</p><strong>{Math.round(analysis.spectralFlatness * 100)}%</strong></article>
+            <article className="profile-card"><p>Processing</p><strong>{qualityConfig(quality).label}</strong></article>
+            <article className="profile-card"><p>Headroom</p><strong>{Math.round(Math.min(outputLevel, processingHeadroom(distortion, feedback)) * 100)}%</strong></article>
           </div>
         ) : null}
         {analysis?.chordTimeline?.length ? (
@@ -402,38 +436,59 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleH
         ) : null}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+          <label className="slider-card">
+            <span>Processing quality</span>
+            <select aria-label="Processing quality" value={quality} onChange={(event) => setQuality(event.target.value)}>
+              {Object.entries(PROCESSING_QUALITY).map(([value, config]) => (
+                <option key={value} value={value}>{config.label}</option>
+              ))}
+            </select>
+          </label>
+
+          <div>
+            <label className="form-label">Output level ({Math.round(outputLevel * 100)}%)</label>
+            <input aria-label="Output level" aria-valuetext={`${Math.round(outputLevel * 100)} percent`} type="range" min={0.5} max={1} step={0.01} value={outputLevel} onChange={(e) => setOutputLevel(Number(e.target.value))} />
+          </div>
+
           <div>
             <label className="form-label">Wet/Dry</label>
-            <input type="range" min={0} max={1} step={0.01} value={wet} onChange={(e) => setWet(Number(e.target.value))} />
+            <input aria-label="Wet dry mix" aria-valuetext={`${Math.round(wet * 100)} percent wet`} type="range" min={0} max={1} step={0.01} value={wet} onChange={(e) => setWet(Number(e.target.value))} />
           </div>
 
           <div>
             <label className="form-label">Lowpass cutoff ({Math.round(cutoff)} Hz)</label>
-            <input type="range" min={200} max={10000} step={1} value={cutoff} onChange={(e) => setCutoff(Number(e.target.value))} />
+            <input aria-label="Lowpass cutoff" aria-valuetext={`${Math.round(cutoff)} hertz`} type="range" min={200} max={10000} step={1} value={cutoff} onChange={(e) => setCutoff(Number(e.target.value))} />
           </div>
 
           <div>
             <label className="form-label">Delay time ({delayTime}s)</label>
-            <input type="range" min={0} max={2} step={0.01} value={delayTime} onChange={(e) => setDelayTime(Number(e.target.value))} />
+            <input aria-label="Delay time" aria-valuetext={`${delayTime} seconds`} type="range" min={0} max={2} step={0.01} value={delayTime} onChange={(e) => setDelayTime(Number(e.target.value))} />
           </div>
 
           <div>
             <label className="form-label">Feedback ({Math.round(feedback * 100)}%)</label>
-            <input type="range" min={0} max={0.95} step={0.01} value={feedback} onChange={(e) => setFeedback(Number(e.target.value))} />
+            <input aria-label="Delay feedback" aria-valuetext={`${Math.round(feedback * 100)} percent`} type="range" min={0} max={0.95} step={0.01} value={feedback} onChange={(e) => setFeedback(Number(e.target.value))} />
           </div>
 
           <div>
             <label className="form-label">Distortion ({Math.round(distortion * 100)}%)</label>
-            <input type="range" min={0} max={1} step={0.01} value={distortion} onChange={(e) => setDistortion(Number(e.target.value))} />
+            <input aria-label="Distortion amount" aria-valuetext={`${Math.round(distortion * 100)} percent`} type="range" min={0} max={1} step={0.01} value={distortion} onChange={(e) => setDistortion(Number(e.target.value))} />
           </div>
 
           <div>
             <label className="form-label">Reverb size ({reverbSize}s)</label>
-            <input type="range" min={0.2} max={6} step={0.1} value={reverbSize} onChange={(e) => setReverbSize(Number(e.target.value))} />
+            <input aria-label="Reverb size" aria-valuetext={`${reverbSize} seconds`} type="range" min={0.2} max={6} step={0.1} value={reverbSize} onChange={(e) => setReverbSize(Number(e.target.value))} />
           </div>
         </div>
 
-        <p style={{ marginTop: 10, color: 'var(--muted)' }}>Note: Recording saves processed output as a webm. Use the download button after stopping.</p>
+        <p className="practice-note" style={{ marginTop: 10 }}>
+          {quality === 'studio'
+            ? 'Studio uses stereo reverb and 4x distortion oversampling. It sounds cleaner but uses more CPU.'
+            : quality === 'economy'
+              ? 'Economy reduces convolution density and oversampling for slower devices.'
+              : 'Balanced uses stereo reverb and moderate oversampling for everyday playback.'}
+        </p>
+        <p style={{ marginTop: 10, color: 'var(--muted)' }}>Recording captures the protected processed output as WebM.</p>
       </div>
     </section>
   );

@@ -351,7 +351,7 @@ export function PracticeRoom({ moduleHandoff, clearModuleHandoff }) {
               <p className="eyebrow">{t('practice.liveFeedback', 'Live feedback')}</p>
               <h4>{t('practice.title', 'Pitch and timing practice')}</h4>
             </div>
-            <span className={`status-pill status-pill--${status === 'Listening' || status === 'Demo running' ? 'live' : 'idle'}`}>
+            <span role="status" aria-live="polite" className={`status-pill status-pill--${status === 'Listening' || status === 'Demo running' ? 'live' : 'idle'}`}>
               {status === 'Listening' ? t('practice.status.listening', 'Listening') : status === 'Demo running' ? t('practice.status.demo', 'Demo running') : t('practice.status.idle', 'Idle')}
             </span>
           </div>
@@ -384,6 +384,7 @@ export function PracticeRoom({ moduleHandoff, clearModuleHandoff }) {
                     key={`${note.midi}-${index}`}
                     type="button"
                     className={`target-chip${index === sequenceIndex ? ' active' : ''}`}
+                    aria-pressed={index === sequenceIndex}
                     onClick={() => {
                       setSequenceIndex(index);
                       goodHitsRef.current = 0;
@@ -463,6 +464,7 @@ export function PracticeRoom({ moduleHandoff, clearModuleHandoff }) {
                   key={note.name}
                   type="button"
                   className={`target-chip${index === targetIndex ? ' active' : ''}`}
+                  aria-pressed={!importedPractice && index === targetIndex}
                   onClick={() => {
                     setImportedPractice(null);
                     setTargetIndex(index);
@@ -478,10 +480,10 @@ export function PracticeRoom({ moduleHandoff, clearModuleHandoff }) {
           <article className="practice-card">
             <p className="eyebrow">{t('practice.mode', 'Practice mode')}</p>
             <div className="target-grid">
-              <button type="button" className={`target-chip${mode === 'mic' ? ' active' : ''}`} onClick={() => setMode('mic')}>
+              <button type="button" aria-pressed={mode === 'mic'} className={`target-chip${mode === 'mic' ? ' active' : ''}`} onClick={() => setMode('mic')}>
                 {t('practice.mode.mic', 'Microphone')}
               </button>
-              <button type="button" className={`target-chip${mode === 'demo' ? ' active' : ''}`} onClick={() => setMode('demo')}>
+              <button type="button" aria-pressed={mode === 'demo'} className={`target-chip${mode === 'demo' ? ' active' : ''}`} onClick={() => setMode('demo')}>
                 {t('practice.mode.demo', 'Demo tone')}
               </button>
             </div>

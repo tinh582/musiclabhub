@@ -10,6 +10,7 @@ import {
   readAnalysisHistory,
   writeAnalysisHistory,
 } from '../utils/analysisHistory';
+import { analysisReportToHtml, buildAnalysisReport } from '../utils/analysisReports';
 
 function getDisplayName(user) {
   if (!user) {
@@ -37,6 +38,8 @@ export function Layout() {
   const [analysisHistory, setAnalysisHistory] = useState(() => readAnalysisHistory());
   const [historyOpen, setHistoryOpen] = useState(false);
   const workspaceUrlRef = useRef(null);
+  const workspaceInputRef = useRef(null);
+  const pageTitleRef = useRef(null);
 
   const applySessionUser = (user) => {
     setCurrentUser(user?.email || null);
@@ -103,6 +106,18 @@ export function Layout() {
     if (restoreHandoff) setModuleHandoff(restoreHandoff);
     navigate(`/feature/${entry.slug}`);
     setHistoryOpen(false);
+  };
+
+  const downloadReport = (entries, format = 'html') => {
+    const report = buildAnalysisReport(entries);
+    const content = format === 'json' ? JSON.stringify(report, null, 2) : analysisReportToHtml(report);
+    const blob = new Blob([content], { type: format === 'json' ? 'application/json' : 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `music-lab-analysis-report.${format}`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   };
 
   useEffect(() => {
@@ -179,8 +194,13 @@ export function Layout() {
     || (location.pathname === '/login' ? t('layout.login', 'Login') : null)
     || t('layout.appName', 'Music Lab Hub');
 
+  useEffect(() => {
+    pageTitleRef.current?.focus({ preventScroll: true });
+  }, [location.pathname]);
+
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">Skip to main content</a>
       <aside className="sidebar">
         <NavLink to="/" className="brand-block">
           <div className="brand-mark">MLH</div>
@@ -205,17 +225,17 @@ export function Layout() {
 
         <div className="sidebar-footer">
           <div className="locale-switch" aria-label={t('layout.language', 'Language')}>
-            <button type="button" className={locale === 'en' ? 'active' : ''} onClick={() => setLocale('en')}>EN</button>
-            <button type="button" className={locale === 'vi' ? 'active' : ''} onClick={() => setLocale('vi')}>VI</button>
+            <button type="button" aria-pressed={locale === 'en'} className={locale === 'en' ? 'active' : ''} onClick={() => setLocale('en')}>EN</button>
+            <button type="button" aria-pressed={locale === 'vi'} className={locale === 'vi' ? 'active' : ''} onClick={() => setLocale('vi')}>VI</button>
           </div>
         </div>
       </aside>
 
-      <main className="content-shell">
+      <main className="content-shell" id="main-content" tabIndex="-1">
         <header className="topbar">
           <div className="topbar-title">
             <p className="eyebrow">{t('layout.appName', 'Music Lab Hub')}</p>
-            <h2>{pageTitle}</h2>
+            <h2 ref={pageTitleRef} tabIndex="-1">{pageTitle}</h2>
           </div>
           <div className="workspace-toolbar">
             <div className="workspace-picker">
@@ -226,25 +246,38 @@ export function Layout() {
                   <strong title={workspaceAudio?.name}>{workspaceAudio?.name || 'Upload audio to begin'}</strong>
                 </span>
               </div>
-              <label className="mini-button workspace-upload" title={workspaceAudio ? 'Replace workspace song' : 'Upload workspace song'}>
+              <button
+                type="button"
+                className="mini-button workspace-upload"
+                title={workspaceAudio ? 'Replace workspace song' : 'Upload workspace song'}
+                onClick={() => workspaceInputRef.current?.click()}
+              >
                 <span>{workspaceAudio ? 'Replace' : 'Upload'}</span>
                 <input
+                  ref={workspaceInputRef}
                   type="file"
                   accept="audio/*"
+                  tabIndex="-1"
                   onChange={(event) => {
                     selectWorkspaceAudio(event.target.files?.[0]);
                     event.target.value = '';
                   }}
                 />
-              </label>
+              </button>
               {workspaceAudio ? (
                 <button type="button" className="mini-button" onClick={clearWorkspaceAudio}>Clear</button>
               ) : null}
             </div>
             {moduleHandoff ? (
-              <span className="handoff-status" title={`Sent from ${moduleHandoff.source}`}>{moduleHandoff.type} ready</span>
+              <span className="handoff-status" role="status" aria-live="polite" title={`Sent from ${moduleHandoff.source}`}>{moduleHandoff.type} ready</span>
             ) : null}
-            <button type="button" className={`mini-button${historyOpen ? ' active' : ''}`} onClick={() => setHistoryOpen((open) => !open)}>
+            <button
+              type="button"
+              className={`mini-button${historyOpen ? ' active' : ''}`}
+              aria-expanded={historyOpen}
+              aria-controls="analysis-history"
+              onClick={() => setHistoryOpen((open) => !open)}
+            >
               History {analysisHistory.length ? `(${analysisHistory.length})` : ''}
             </button>
             <NavLink to={currentUser ? '/account' : '/login'} className="mini-button account-toplink">
@@ -254,13 +287,15 @@ export function Layout() {
         </header>
 
         {historyOpen ? (
-          <section className="history-drawer" aria-label="Analysis history">
+          <section className="history-drawer" id="analysis-history" aria-label="Analysis history">
             <div className="history-drawer__header">
               <div>
                 <p className="eyebrow">Analysis history</p>
                 <strong>Saved results</strong>
               </div>
               <div className="history-drawer__actions">
+                <button type="button" className="mini-button" onClick={() => downloadReport(analysisHistory)} disabled={!analysisHistory.length}>Report</button>
+                <button type="button" className="mini-button" onClick={() => downloadReport(analysisHistory, 'json')} disabled={!analysisHistory.length}>JSON</button>
                 <button type="button" className="mini-button" onClick={clearAnalysisHistory} disabled={!analysisHistory.length}>Clear all</button>
                 <button type="button" className="mini-button" onClick={() => setHistoryOpen(false)}>Close</button>
               </div>
@@ -283,6 +318,7 @@ export function Layout() {
                     <button type="button" className="mini-button" onClick={() => restoreAnalysis(entry)}>
                       {entry.snapshot ? 'Restore' : 'Open'}
                     </button>
+                    <button type="button" className="mini-button" onClick={() => downloadReport([entry])}>Report</button>
                     <button type="button" className="mini-button" onClick={() => removeAnalysis(entry.id)}>Remove</button>
                   </div>
                 </article>

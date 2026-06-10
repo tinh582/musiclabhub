@@ -3,6 +3,7 @@ import { useLocale } from '../i18n/LocaleProvider';
 import { CATALOG, buildCatalog } from '../data/catalog';
 import { useAudioFeatures } from '../hooks/useAudioFeatures';
 import { formatDuration } from '../utils/audioFeatures';
+import { evaluateClassifications } from '../utils/modelEvaluation';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://localhost:5174';
 
@@ -41,6 +42,7 @@ export function ClassificationLab({ workspaceAudio = null, saveAnalysis = null, 
   const [playing, setPlaying] = useState(false);
   const [trainProgress, setTrainProgress] = useState(0);
   const [probs, setProbs] = useState([]);
+  const [evaluation, setEvaluation] = useState(null);
   const modelRef = useRef(null);
   const tfRef = useRef(null); // will hold imported tf module
   const audioRef = useRef(null);
@@ -171,6 +173,7 @@ export function ClassificationLab({ workspaceAudio = null, saveAnalysis = null, 
       });
 
       modelRef.current = model;
+      await evaluateModel(model, tf);
       // warm predict first item
       predict(catalog[0]);
       xs.dispose();
@@ -247,6 +250,7 @@ export function ClassificationLab({ workspaceAudio = null, saveAnalysis = null, 
       setSelectedId(snapshot.selectedId);
     }
     if (Array.isArray(snapshot.probs)) setProbs(snapshot.probs);
+    if (snapshot.evaluation) setEvaluation(snapshot.evaluation);
     clearModuleHandoff?.();
   }, [moduleHandoff, clearModuleHandoff]);
 
@@ -264,6 +268,18 @@ export function ClassificationLab({ workspaceAudio = null, saveAnalysis = null, 
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
     }
+  }
+
+  async function evaluateModel(model = modelRef.current, tf = tfRef.current) {
+    if (!model || !tf) return;
+    const input = tf.tensor2d(features);
+    const output = model.predict(input);
+    const rows = await output.array();
+    const predicted = rows.map((row) => genres[row.indexOf(Math.max(...row))]);
+    const actual = catalog.map((track) => track.genre);
+    setEvaluation(evaluateClassifications(actual, predicted, genres));
+    input.dispose();
+    output.dispose();
   }
 
   function handleFileUpload(event) {
@@ -373,6 +389,7 @@ export function ClassificationLab({ workspaceAudio = null, saveAnalysis = null, 
         selectedId,
         customSource: customSource ? { ...customSource, audioUrl: customSource.audioUrl?.startsWith('blob:') ? '' : customSource.audioUrl } : null,
         probs,
+        evaluation,
       },
     });
   }
@@ -514,6 +531,33 @@ export function ClassificationLab({ workspaceAudio = null, saveAnalysis = null, 
                 ))}
               </div>
             </div>
+
+            {evaluation ? (
+              <div className="model-evaluation">
+                <div className="section-heading">
+                  <p className="eyebrow">Model evaluation</p>
+                  <h4>Training-set diagnostic</h4>
+                </div>
+                <div className="profile-strip">
+                  <article className="profile-card"><p>Accuracy</p><strong>{Math.round(evaluation.accuracy * 100)}%</strong></article>
+                  <article className="profile-card"><p>Macro F1</p><strong>{Math.round(evaluation.macroF1 * 100)}%</strong></article>
+                  <article className="profile-card"><p>Correct</p><strong>{evaluation.correct}/{evaluation.total}</strong></article>
+                </div>
+                <p className="practice-note practice-note--warning">
+                  This diagnostic reuses the {evaluation.total} training tracks. It checks implementation behavior, not generalization to new music.
+                </p>
+                <div className="model-evaluation__labels">
+                  {evaluation.perLabel.map((metric) => (
+                    <div key={metric.label}>
+                      <strong>{metric.label}</strong>
+                      <span>Precision {Math.round(metric.precision * 100)}%</span>
+                      <span>Recall {Math.round(metric.recall * 100)}%</span>
+                      <span>F1 {Math.round(metric.f1 * 100)}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </article>
 
