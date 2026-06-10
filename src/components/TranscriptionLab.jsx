@@ -76,7 +76,13 @@ function inferMelodicProfile(notes) {
   };
 }
 
-export function TranscriptionLab({ workspaceAudio = null, sendModuleHandoff = null, saveAnalysis = null }) {
+export function TranscriptionLab({
+  workspaceAudio = null,
+  sendModuleHandoff = null,
+  saveAnalysis = null,
+  moduleHandoff = null,
+  clearModuleHandoff = null,
+}) {
   const navigate = useNavigate();
   const fileRef = useRef(null);
   const audioRef = useRef(null);
@@ -154,17 +160,40 @@ export function TranscriptionLab({ workspaceAudio = null, sendModuleHandoff = nu
   const { t } = useLocale();
   const melodicProfile = useMemo(() => inferMelodicProfile(notes), [notes]);
 
-  function sendToComposer() {
-    if (!notes.length || !sendModuleHandoff) return;
-    const melody = notes
+  useEffect(() => {
+    if (moduleHandoff?.type !== 'restore-analysis' || moduleHandoff.payload?.slug !== 'transcription') return;
+    const snapshot = moduleHandoff.payload.snapshot || {};
+    if (Array.isArray(snapshot.notes)) setNotes(snapshot.notes);
+    if (snapshot.analysisSummary) setAnalysisSummary(snapshot.analysisSummary);
+    if (Number.isFinite(snapshot.tempo)) setTempo(snapshot.tempo);
+    if (Number.isFinite(snapshot.resolution)) setResolution(snapshot.resolution);
+    if (typeof snapshot.triplet === 'boolean') setTriplet(snapshot.triplet);
+    if (Number.isFinite(snapshot.swing)) setSwing(snapshot.swing);
+    clearModuleHandoff?.();
+  }, [moduleHandoff, clearModuleHandoff]);
+
+  function buildHandoffMelody() {
+    return notes
       .filter((note) => note.frequency && note.kind !== 'rest')
       .map((note) => ({
         midi: Math.round(69 + 12 * Math.log2(note.frequency / 440)),
         duration: Math.max(0.125, Number(note.duration || 0.5)),
         note: note.note,
       }));
+  }
+
+  function sendToComposer() {
+    if (!notes.length || !sendModuleHandoff) return;
+    const melody = buildHandoffMelody();
     sendModuleHandoff('melody', { melody, tempo, title: 'Transcribed melody' }, 'Transcription');
     navigate('/feature/composer');
+  }
+
+  function sendToPractice() {
+    if (!notes.length || !sendModuleHandoff) return;
+    const melody = buildHandoffMelody();
+    sendModuleHandoff('practice-melody', { melody, tempo, title: 'Transcribed melody' }, 'Transcription');
+    navigate('/feature/practice');
   }
 
   function saveCurrentAnalysis() {
@@ -180,6 +209,14 @@ export function TranscriptionLab({ workspaceAudio = null, sendModuleHandoff = nu
         { label: 'Range', value: melodicProfile ? `${melodicProfile.range} semitones` : 'n/a' },
         { label: 'Tempo', value: `${tempo} BPM` },
       ],
+      snapshot: {
+        notes,
+        analysisSummary,
+        tempo,
+        resolution,
+        triplet,
+        swing,
+      },
     });
   }
 
@@ -725,6 +762,9 @@ export function TranscriptionLab({ workspaceAudio = null, sendModuleHandoff = nu
                 <button className="button button--ghost" type="button" onClick={exportQuantizedMIDI} disabled={notes.length === 0}>{t('transcription.exportMidi', 'Export MIDI')}</button>
                 <button className="button button--ghost" type="button" onClick={sendToComposer} disabled={notes.length === 0}>
                   Open in Composer
+                </button>
+                <button className="button button--ghost" type="button" onClick={sendToPractice} disabled={notes.length === 0}>
+                  Open in Practice
                 </button>
                 <button className="button button--ghost" type="button" onClick={saveCurrentAnalysis} disabled={notes.length === 0}>
                   Save analysis

@@ -34,7 +34,7 @@ function formatTempoInfo(audioInfo, selected, customSource) {
   return `${audioInfo.tempo} BPM`;
 }
 
-export function ClassificationLab({ workspaceAudio = null, saveAnalysis = null }) {
+export function ClassificationLab({ workspaceAudio = null, saveAnalysis = null, moduleHandoff = null, clearModuleHandoff = null }) {
   const { t } = useLocale();
   const localizedCatalog = buildCatalog(t);
   const [selectedId, setSelectedId] = useState(localizedCatalog[0].id);
@@ -238,6 +238,18 @@ export function ClassificationLab({ workspaceAudio = null, saveAnalysis = null }
     setPlaying(false);
   }, [workspaceAudio]);
 
+  useEffect(() => {
+    if (moduleHandoff?.type !== 'restore-analysis' || moduleHandoff.payload?.slug !== 'classification') return;
+    const snapshot = moduleHandoff.payload.snapshot || {};
+    if (snapshot.customSource) setCustomSource(snapshot.customSource);
+    else if (snapshot.selectedId) {
+      setCustomSource(null);
+      setSelectedId(snapshot.selectedId);
+    }
+    if (Array.isArray(snapshot.probs)) setProbs(snapshot.probs);
+    clearModuleHandoff?.();
+  }, [moduleHandoff, clearModuleHandoff]);
+
   function clearCustomSource() {
     if (objectUrlRef.current) {
       URL.revokeObjectURL(objectUrlRef.current);
@@ -353,10 +365,15 @@ export function ClassificationLab({ workspaceAudio = null, saveAnalysis = null }
       source: selected.title,
       metrics: [
         { label: 'Confidence', value: `${Math.round(probs[0].prob * 100)}%` },
-        { label: 'Energy', value: `${Math.round(selected.energy * 100)}%` },
-        { label: 'Valence', value: `${Math.round(selected.valence * 100)}%` },
+        { label: 'Key', value: audioInfo?.estimatedKey || 'n/a' },
+        { label: 'First chord', value: audioInfo?.chordTimeline?.[0]?.chord || 'n/a' },
         { label: 'Tempo', value: `${Math.round(selected.tempo)} BPM` },
       ],
+      snapshot: {
+        selectedId,
+        customSource: customSource ? { ...customSource, audioUrl: customSource.audioUrl?.startsWith('blob:') ? '' : customSource.audioUrl } : null,
+        probs,
+      },
     });
   }
 
@@ -478,6 +495,8 @@ export function ClassificationLab({ workspaceAudio = null, saveAnalysis = null }
                 <span style={{ color: 'var(--muted)' }}>{t('class.peak', 'Peak')}: {audioLoading || !audioInfo ? t('class.loading', 'Loading...') : `${audioInfo.peakDb.toFixed(1)} dB`}</span>
                 <span style={{ color: 'var(--muted)' }}>{t('class.rms', 'RMS')}: {audioLoading || !audioInfo ? t('class.loading', 'Loading...') : `${audioInfo.rmsDb.toFixed(1)} dB`}</span>
                 <span style={{ color: 'var(--muted)' }}>{t('class.tempo', 'Tempo')}: {audioLoading || !audioInfo ? t('class.loading', 'Loading...') : formatTempoInfo(audioInfo, selected, customSource)}</span>
+                <span style={{ color: 'var(--muted)' }}>Key: {audioLoading || !audioInfo ? t('class.loading', 'Loading...') : `${audioInfo.estimatedKey} (${Math.round(audioInfo.keyConfidence * 100)}%)`}</span>
+                <span style={{ color: 'var(--muted)' }}>Chords: {audioLoading || !audioInfo ? t('class.loading', 'Loading...') : audioInfo.chordTimeline.slice(0, 8).map((entry) => entry.chord).join(' · ') || 'n/a'}</span>
               </div>
             </div>
 

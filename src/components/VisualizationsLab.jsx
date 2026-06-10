@@ -6,7 +6,7 @@ function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v));
 }
 
-export function VisualizationsLab({ workspaceAudio = null, saveAnalysis = null }) {
+export function VisualizationsLab({ workspaceAudio = null, saveAnalysis = null, moduleHandoff = null, clearModuleHandoff = null }) {
   const audioRef = useRef(null);
   const audioCtxRef = useRef(null);
   const analyserRef = useRef(null);
@@ -308,6 +308,24 @@ export function VisualizationsLab({ workspaceAudio = null, saveAnalysis = null }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceAudio]);
 
+  useEffect(() => {
+    if (moduleHandoff?.type !== 'restore-analysis' || moduleHandoff.payload?.slug !== 'visualizations') return;
+    const snapshot = moduleHandoff.payload.snapshot || {};
+    if (snapshot.sourceUrl && !snapshot.sourceUrl.startsWith('blob:')) {
+      loadObjectUrl(snapshot.sourceUrl, snapshot.loadedLabel || 'Restored source');
+    }
+    if (Number.isFinite(snapshot.fftSize)) setFftSize(snapshot.fftSize);
+    if (Number.isFinite(snapshot.smoothing)) setSmoothing(snapshot.smoothing);
+    if (Number.isFinite(snapshot.minDb)) setMinDb(snapshot.minDb);
+    if (Number.isFinite(snapshot.maxDb)) setMaxDb(snapshot.maxDb);
+    if (Number.isFinite(snapshot.oscZoom)) setOscZoom(snapshot.oscZoom);
+    if (Number.isFinite(snapshot.spectrumBars)) setSpectrumBars(snapshot.spectrumBars);
+    if (Number.isFinite(snapshot.spectrumFloor)) setSpectrumFloor(snapshot.spectrumFloor);
+    if (Number.isFinite(snapshot.spectroContrast)) setSpectroContrast(snapshot.spectroContrast);
+    clearModuleHandoff?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moduleHandoff, clearModuleHandoff]);
+
   function applyIntelligentView() {
     if (!audioProfile) return;
     const brightness = clamp(audioProfile.spectralCentroid / 5000, 0, 1);
@@ -328,11 +346,23 @@ export function VisualizationsLab({ workspaceAudio = null, saveAnalysis = null }
       title: `${audioProfile.estimatedKey} audio profile`,
       source: loadedLabel,
       metrics: [
+        { label: 'Key', value: audioProfile.estimatedKey },
+        { label: 'Key match', value: `${Math.round(audioProfile.keyConfidence * 100)}%` },
+        { label: 'First chord', value: audioProfile.chordTimeline?.[0]?.chord || 'n/a' },
         { label: 'Tempo', value: audioProfile.tempo ? `${audioProfile.tempo} BPM` : 'n/a' },
-        { label: 'Brightness', value: `${Math.round(audioProfile.spectralCentroid)} Hz` },
-        { label: 'Dynamics', value: `${audioProfile.dynamicRangeDb.toFixed(1)} dB` },
-        { label: 'Texture', value: audioProfile.spectralFlatness > 0.22 ? 'Noisy' : 'Tonal' },
       ],
+      snapshot: {
+        sourceUrl: sourceUrl.startsWith('blob:') ? '' : sourceUrl,
+        loadedLabel,
+        fftSize,
+        smoothing,
+        minDb,
+        maxDb,
+        oscZoom,
+        spectrumBars,
+        spectrumFloor,
+        spectroContrast,
+      },
     });
   }
 
@@ -515,10 +545,21 @@ export function VisualizationsLab({ workspaceAudio = null, saveAnalysis = null }
               <p className="eyebrow">Audio interpretation</p>
               <div className="practice-log">
                 <div className="practice-log__item"><strong>Key</strong><span>{audioProfile.estimatedKey}</span></div>
+                <div className="practice-log__item"><strong>Key match</strong><span>{Math.round(audioProfile.keyConfidence * 100)}%</span></div>
                 <div className="practice-log__item"><strong>Tempo</strong><span>{audioProfile.tempo ? `${audioProfile.tempo} BPM` : 'n/a'}</span></div>
                 <div className="practice-log__item"><strong>Brightness</strong><span>{Math.round(audioProfile.spectralCentroid)} Hz</span></div>
                 <div className="practice-log__item"><strong>Texture</strong><span>{audioProfile.spectralFlatness > 0.22 ? 'Noisy' : audioProfile.spectralCentroid > 2600 ? 'Bright' : 'Warm'}</span></div>
               </div>
+              {audioProfile.chordTimeline?.length ? (
+                <div className="harmony-strip__timeline">
+                  {audioProfile.chordTimeline.slice(0, 12).map((entry) => (
+                    <span key={`${entry.time}-${entry.chord}`} title={`${Math.round(entry.confidence * 100)}% match`}>
+                      <strong>{entry.chord}</strong>
+                      <small>{entry.time.toFixed(1)}s</small>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ) : null}
 

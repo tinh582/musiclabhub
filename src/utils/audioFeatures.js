@@ -2,6 +2,9 @@ import MusicTempo from 'music-tempo';
 
 const featureCache = new Map();
 let sharedCtx = null;
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const MAJOR_KEY_PROFILE = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+const MINOR_KEY_PROFILE = [6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
 
 function getAudioContext() {
   if (!sharedCtx || sharedCtx.state === 'closed') {
@@ -68,6 +71,140 @@ function fftMagnitudes(samples) {
   return magnitudes;
 }
 
+function rotateProfile(profile, root) {
+  return profile.map((_, index) => profile[((index - root) % 12 + 12) % 12]);
+}
+
+function cosineSimilarity(left, right) {
+  let dot = 0;
+  let leftPower = 0;
+  let rightPower = 0;
+  for (let i = 0; i < left.length; i += 1) {
+    dot += left[i] * right[i];
+    leftPower += left[i] ** 2;
+    rightPower += right[i] ** 2;
+  }
+  return dot / Math.max(1e-12, Math.sqrt(leftPower * rightPower));
+}
+
+function normalizeChroma(chroma) {
+  const total = chroma.reduce((sum, value) => sum + value, 0);
+  return total ? Array.from(chroma, (value) => value / total) : Array(12).fill(0);
+}
+
+function computeFrameChroma(samples, sampleRate) {
+  const chroma = new Float64Array(12);
+  const magnitudes = fftMagnitudes(samples);
+  for (let bin = 1; bin < magnitudes.length; bin += 1) {
+    const frequency = (bin * sampleRate) / samples.length;
+    if (frequency < 55 || frequency > 5000) continue;
+    const midi = 69 + 12 * Math.log2(frequency / 440);
+    const pitchClass = ((Math.round(midi) % 12) + 12) % 12;
+    chroma[pitchClass] += Math.log1p(magnitudes[bin]);
+  }
+  return normalizeChroma(chroma);
+}
+
+export function detectKeyFromChroma(chroma) {
+  const normalized = normalizeChroma(chroma);
+  const candidates = [];
+  for (let root = 0; root < 12; root += 1) {
+    candidates.push({
+      root,
+      mode: 'major',
+      score: cosineSimilarity(normalized, rotateProfile(MAJOR_KEY_PROFILE, root)),
+    });
+    candidates.push({
+      root,
+      mode: 'minor',
+      score: cosineSimilarity(normalized, rotateProfile(MINOR_KEY_PROFILE, root)),
+    });
+  }
+  candidates.sort((a, b) => b.score - a.score);
+  const best = candidates[0];
+  const runnerUp = candidates[1];
+  return {
+    key: `${NOTE_NAMES[best.root]} ${best.mode}`,
+    root: NOTE_NAMES[best.root],
+    mode: best.mode,
+    confidence: Math.max(0, Math.min(1, (best.score - runnerUp.score) * 4 + best.score * 0.35)),
+  };
+}
+
+export function detectChordFromChroma(chroma) {
+  const normalized = normalizeChroma(chroma);
+  if (Math.max(...normalized) < 0.12) return { chord: 'N', confidence: 0 };
+  const candidates = [];
+  for (let root = 0; root < 12; root += 1) {
+    [['major', [0, 4, 7]], ['minor', [0, 3, 7]]].forEach(([quality, intervals]) => {
+      const template = Array(12).fill(0.08);
+      intervals.forEach((interval) => { template[(root + interval) % 12] = 1; });
+      candidates.push({
+        root,
+        quality,
+        score: cosineSimilarity(normalized, template),
+      });
+    });
+  }
+  candidates.sort((a, b) => b.score - a.score);
+  const best = candidates[0];
+  const runnerUp = candidates[1];
+  const suffix = best.quality === 'minor' ? 'm' : '';
+  return {
+    chord: `${NOTE_NAMES[best.root]}${suffix}`,
+    confidence: Math.max(0, Math.min(1, (best.score - runnerUp.score) * 3 + best.score * 0.25)),
+  };
+}
+
+function computeHarmonyFeatures(data, sampleRate) {
+  const fftSize = 4096;
+  const segmentSeconds = 1.5;
+  const segmentSize = Math.max(fftSize, Math.round(sampleRate * segmentSeconds));
+  const globalChroma = new Float64Array(12);
+  const timeline = [];
+
+  for (let start = 0; start + fftSize <= data.length; start += segmentSize) {
+    const segmentEnd = Math.min(data.length, start + segmentSize);
+    const segmentChroma = new Float64Array(12);
+    let frames = 0;
+    const frameStride = Math.max(fftSize, Math.floor((segmentEnd - start - fftSize) / 3));
+    for (let frameStart = start; frameStart + fftSize <= segmentEnd; frameStart += frameStride) {
+      const frameChroma = computeFrameChroma(data.subarray(frameStart, frameStart + fftSize), sampleRate);
+      frameChroma.forEach((value, index) => {
+        segmentChroma[index] += value;
+        globalChroma[index] += value;
+      });
+      frames += 1;
+    }
+    if (!frames) continue;
+    const detected = detectChordFromChroma(segmentChroma);
+    timeline.push({
+      time: start / sampleRate,
+      duration: (segmentEnd - start) / sampleRate,
+      ...detected,
+    });
+  }
+
+  const smoothedTimeline = timeline
+    .map((entry, index) => {
+      const previous = timeline[index - 1];
+      const next = timeline[index + 1];
+      if (previous?.chord === next?.chord && entry.confidence < 0.45) return { ...entry, chord: previous.chord };
+      return entry;
+    })
+    .filter((entry, index, entries) => index === 0 || entry.chord !== entries[index - 1].chord)
+    .slice(0, 64);
+
+  const key = detectKeyFromChroma(globalChroma);
+  return {
+    estimatedKey: key.key,
+    keyRoot: key.root,
+    keyMode: key.mode,
+    keyConfidence: key.confidence,
+    chordTimeline: smoothedTimeline,
+  };
+}
+
 function computeSpectralFeatures(data, sampleRate) {
   const fftSize = 2048;
   const chroma = new Float64Array(12);
@@ -105,20 +242,10 @@ function computeSpectralFeatures(data, sampleRate) {
   const geometricMean = Math.exp(flatnessLog / Math.max(1, flatnessCount));
   const spectralFlatness = arithmeticMean ? geometricMean / arithmeticMean : 0;
   const spectralCentroid = magnitudeTotal ? weightedFrequency / magnitudeTotal : 0;
-  const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-  let keyIndex = 0;
-  for (let i = 1; i < chroma.length; i += 1) {
-    if (chroma[i] > chroma[keyIndex]) keyIndex = i;
-  }
-  const chromaTotal = chroma.reduce((sum, value) => sum + value, 0);
-  const keyConfidence = chromaTotal ? chroma[keyIndex] / chromaTotal : 0;
-
   return {
     spectralCentroid,
     spectralFlatness,
     dominantFrequency: strongestFrequency,
-    estimatedKey: noteNames[keyIndex],
-    keyConfidence,
   };
 }
 
@@ -306,6 +433,7 @@ export function computeAudioBufferFeatures(buffer) {
   const tempoEstimate = estimateTempo(data, buffer.sampleRate);
   const zcr = zeroCross / data.length;
   const spectral = computeSpectralFeatures(data, buffer.sampleRate);
+  const harmony = computeHarmonyFeatures(data, buffer.sampleRate);
   const crestFactor = rms ? peak / rms : 0;
 
   return {
@@ -322,6 +450,7 @@ export function computeAudioBufferFeatures(buffer) {
     crestFactor,
     dynamicRangeDb: Math.max(0, toDb(peak) - toDb(rms)),
     ...spectral,
+    ...harmony,
   };
 }
 

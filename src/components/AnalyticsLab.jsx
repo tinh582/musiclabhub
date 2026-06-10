@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocale } from '../i18n/LocaleProvider';
 import { buildCatalog } from '../data/catalog';
 
@@ -83,7 +83,7 @@ function clusterTracks(tracks, clusterCount = 3, iterations = 12) {
   });
 }
 
-export function AnalyticsLab({ saveAnalysis = null }) {
+export function AnalyticsLab({ saveAnalysis = null, moduleHandoff = null, clearModuleHandoff = null }) {
   const { t } = useLocale();
   const [dataset, setDataset] = useState(() => buildCatalog(t || ((k, f) => f)));
   const [selectedGenres, setSelectedGenres] = useState(null);
@@ -146,6 +146,15 @@ export function AnalyticsLab({ saveAnalysis = null }) {
   const scatterPoints = useMemo(() => filtered.map((track) => ({ x: Number(track.energy || 0), y: Number(track.valence || 0), genre: track.genre, title: `${track.title || ''} — ${track.artist || ''}` })), [filtered]);
   const discoveredClusters = useMemo(() => clusterTracks(filtered, Math.min(3, filtered.length)), [filtered]);
 
+  useEffect(() => {
+    if (moduleHandoff?.type !== 'restore-analysis' || moduleHandoff.payload?.slug !== 'analytics') return;
+    const snapshot = moduleHandoff.payload.snapshot || {};
+    if (Array.isArray(snapshot.dataset) && snapshot.dataset.length) setDataset(snapshot.dataset);
+    setSelectedGenres(Array.isArray(snapshot.selectedGenres) ? snapshot.selectedGenres : null);
+    if (Array.isArray(snapshot.tempoRange) && snapshot.tempoRange.length === 2) setTempoRange(snapshot.tempoRange);
+    clearModuleHandoff?.();
+  }, [moduleHandoff, clearModuleHandoff]);
+
   function handleFile(e) {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
@@ -182,6 +191,7 @@ export function AnalyticsLab({ saveAnalysis = null }) {
         { label: 'Tempo min', value: `${tempoRange[0]} BPM` },
         { label: 'Tempo max', value: `${tempoRange[1]} BPM` },
       ],
+      snapshot: { dataset, selectedGenres, tempoRange },
     });
   }
 

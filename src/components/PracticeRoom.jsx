@@ -85,9 +85,21 @@ function formatFrequency(value) {
   return value ? `${value.toFixed(1)} Hz` : '--';
 }
 
-export function PracticeRoom() {
+function midiToTarget(midi) {
+  const roundedMidi = Math.round(Number(midi));
+  const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  return {
+    midi: roundedMidi,
+    name: `${noteNames[((roundedMidi % 12) + 12) % 12]}${Math.floor(roundedMidi / 12) - 1}`,
+    frequency: 440 * (2 ** ((roundedMidi - 69) / 12)),
+  };
+}
+
+export function PracticeRoom({ moduleHandoff, clearModuleHandoff }) {
   const [status, setStatus] = useState('Idle');
   const [targetIndex, setTargetIndex] = useState(3);
+  const [importedPractice, setImportedPractice] = useState(null);
+  const [sequenceIndex, setSequenceIndex] = useState(0);
   const [detectedFrequency, setDetectedFrequency] = useState(null);
   const [detectedNote, setDetectedNote] = useState('--');
   const [cents, setCents] = useState(0);
@@ -104,8 +116,15 @@ export function PracticeRoom() {
   const oscillatorRef = useRef(null);
   const demoStepRef = useRef(0);
   const lastLoggedRef = useRef(0);
+  const goodHitsRef = useRef(0);
 
-  const targetNote = TARGET_NOTES[targetIndex];
+  const importedTargets = useMemo(
+    () => importedPractice?.melody.map((note) => ({ ...midiToTarget(note.midi), duration: note.duration })) || [],
+    [importedPractice],
+  );
+  const targetNote = importedTargets[sequenceIndex] || TARGET_NOTES[targetIndex];
+  const targetNoteRef = useRef(targetNote);
+  targetNoteRef.current = targetNote;
 
   const { t } = useLocale();
 
@@ -135,6 +154,29 @@ export function PracticeRoom() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (moduleHandoff?.type !== 'practice-melody') return;
+    const melody = (moduleHandoff.payload?.melody || [])
+      .filter((note) => Number.isFinite(Number(note.midi)))
+      .map((note) => ({
+        midi: Number(note.midi),
+        duration: Math.max(0.125, Number(note.duration || 0.5)),
+      }));
+    if (melody.length) {
+      setImportedPractice({
+        melody,
+        tempo: Number(moduleHandoff.payload?.tempo) || 120,
+        title: moduleHandoff.payload?.title || 'Imported melody',
+        source: moduleHandoff.source || 'Music workspace',
+      });
+      setSequenceIndex(0);
+      setScore(0);
+      setSessionLog([]);
+      goodHitsRef.current = 0;
+    }
+    clearModuleHandoff?.();
+  }, [moduleHandoff, clearModuleHandoff]);
 
   function stopAnimation() {
     if (animationRef.current) {
@@ -177,6 +219,33 @@ export function PracticeRoom() {
     setStatus('Idle');
   }
 
+  function recordPitch(frequency) {
+    const note = frequencyToNoteName(frequency);
+    const currentTarget = targetNoteRef.current;
+    const newScore = getPitchScore(currentTarget.frequency, frequency);
+    setDetectedFrequency(frequency);
+    setDetectedNote(note.name);
+    setCents(note.cents);
+    setScore(newScore);
+
+    if (importedPractice) {
+      goodHitsRef.current = newScore >= 85 ? goodHitsRef.current + 1 : 0;
+      if (goodHitsRef.current >= 2) {
+        goodHitsRef.current = 0;
+        setSequenceIndex((index) => Math.min(index + 1, importedPractice.melody.length - 1));
+      }
+    }
+
+    const now = Date.now();
+    if (now - lastLoggedRef.current > 900) {
+      lastLoggedRef.current = now;
+      setSessionLog((entries) => [
+        { note: note.name, target: currentTarget.name, frequency, score: newScore },
+        ...entries,
+      ].slice(0, 8));
+    }
+  }
+
   function samplePitch() {
     const analyser = analyserRef.current;
     const audioContext = audioContextRef.current;
@@ -189,25 +258,7 @@ export function PracticeRoom() {
     const frequency = autoCorrelate(buffer, audioContext.sampleRate);
 
     if (frequency > 0) {
-      const note = frequencyToNoteName(frequency);
-      const newScore = getPitchScore(targetNote.frequency, frequency);
-      setDetectedFrequency(frequency);
-      setDetectedNote(note.name);
-      setCents(note.cents);
-      setScore(newScore);
-
-      const now = Date.now();
-      if (now - lastLoggedRef.current > 900) {
-        lastLoggedRef.current = now;
-        setSessionLog((entries) => [
-          {
-            note: note.name,
-            frequency,
-            score: newScore,
-          },
-          ...entries,
-        ].slice(0, 8));
-      }
+      recordPitch(frequency);
     } else {
       setDetectedFrequency(null);
       setDetectedNote('--');
@@ -282,24 +333,7 @@ export function PracticeRoom() {
       const frequency = autoCorrelate(buffer, audioContext.sampleRate);
 
       if (frequency > 0) {
-        const note = frequencyToNoteName(frequency);
-        const newScore = getPitchScore(targetNote.frequency, frequency);
-        setDetectedFrequency(frequency);
-        setDetectedNote(note.name);
-        setCents(note.cents);
-        setScore(newScore);
-        const now = Date.now();
-        if (now - lastLoggedRef.current > 900) {
-          lastLoggedRef.current = now;
-          setSessionLog((entries) => [
-            {
-              note: note.name,
-              frequency,
-              score: newScore,
-            },
-            ...entries,
-          ].slice(0, 8));
-        }
+        recordPitch(frequency);
       }
 
       animationRef.current = requestAnimationFrame(tick);
@@ -334,6 +368,48 @@ export function PracticeRoom() {
               <small>{formatFrequency(detectedFrequency)}</small>
             </div>
           </div>
+
+          {importedPractice ? (
+            <div className="practice-sequence">
+              <div className="practice-sequence__heading">
+                <div>
+                  <span>Imported from {importedPractice.source}</span>
+                  <strong>{importedPractice.title}</strong>
+                </div>
+                <small>{importedPractice.tempo} BPM · Note {sequenceIndex + 1} of {importedTargets.length}</small>
+              </div>
+              <div className="practice-sequence__notes" aria-label="Imported practice melody">
+                {importedTargets.map((note, index) => (
+                  <button
+                    key={`${note.midi}-${index}`}
+                    type="button"
+                    className={`target-chip${index === sequenceIndex ? ' active' : ''}`}
+                    onClick={() => {
+                      setSequenceIndex(index);
+                      goodHitsRef.current = 0;
+                    }}
+                    title={`${note.name}, ${note.duration}s`}
+                  >
+                    {note.name}
+                  </button>
+                ))}
+              </div>
+              <div className="practice-sequence__controls">
+                <button type="button" className="button button--ghost" onClick={() => setSequenceIndex((index) => Math.max(0, index - 1))} disabled={sequenceIndex === 0}>
+                  Previous
+                </button>
+                <button type="button" className="button button--ghost" onClick={() => setSequenceIndex((index) => Math.min(importedTargets.length - 1, index + 1))} disabled={sequenceIndex === importedTargets.length - 1}>
+                  Next
+                </button>
+                <button type="button" className="button button--ghost" onClick={() => setSequenceIndex(0)}>
+                  Restart
+                </button>
+                <button type="button" className="button button--ghost" onClick={() => setImportedPractice(null)}>
+                  Close melody
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           <div className="practice-gauge">
             <div className="practice-gauge__scale">
@@ -387,7 +463,11 @@ export function PracticeRoom() {
                   key={note.name}
                   type="button"
                   className={`target-chip${index === targetIndex ? ' active' : ''}`}
-                  onClick={() => setTargetIndex(index)}
+                  onClick={() => {
+                    setImportedPractice(null);
+                    setTargetIndex(index);
+                    goodHitsRef.current = 0;
+                  }}
                 >
                   {note.name}
                 </button>
@@ -415,7 +495,7 @@ export function PracticeRoom() {
               ) : (
                 sessionLog.map((entry, index) => (
                   <div key={`${entry.note}-${index}`} className="practice-log__item">
-                    <strong>{entry.note}</strong>
+                    <strong>{entry.note}{entry.target ? ` / ${entry.target}` : ''}</strong>
                     <span>{formatFrequency(entry.frequency)}</span>
                     <span>{entry.score}</span>
                   </div>

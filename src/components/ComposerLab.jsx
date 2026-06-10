@@ -344,6 +344,16 @@ export function ComposerLab({ moduleHandoff = null, sendModuleHandoff = null, cl
     }, 'Composer');
     navigate('/feature/instrument');
   }
+
+  function sendToPractice() {
+    if (!melody.length || !sendModuleHandoff) return;
+    sendModuleHandoff('practice-melody', {
+      melody,
+      tempo: 120,
+      title: 'Composer melody',
+    }, 'Composer');
+    navigate('/feature/practice');
+  }
   const { t } = useLocale();
 
   return (
@@ -418,6 +428,9 @@ export function ComposerLab({ moduleHandoff = null, sendModuleHandoff = null, cl
                   </button>
                   <button className="button button--ghost" onClick={sendToInstrument}>
                     Open in Instrument
+                  </button>
+                  <button className="button button--ghost" onClick={sendToPractice}>
+                    Open in Practice
                   </button>
                 </>
               )}

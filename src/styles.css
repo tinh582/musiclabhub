@@ -1876,6 +1876,75 @@ select {
   margin-top: 18px;
 }
 
+.practice-sequence {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.practice-sequence__heading,
+.practice-sequence__controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.practice-sequence__heading div {
+  display: grid;
+  gap: 3px;
+}
+
+.practice-sequence__heading span,
+.practice-sequence__heading small {
+  color: var(--muted);
+}
+
+.practice-sequence__notes {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.practice-sequence__notes .target-chip {
+  flex: 0 0 auto;
+}
+
+.practice-sequence__controls {
+  justify-content: flex-start;
+}
+
+.harmony-strip {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.harmony-strip__timeline {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 6px;
+}
+
+.harmony-strip__timeline > span {
+  display: grid;
+  flex: 0 0 58px;
+  gap: 2px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  text-align: center;
+}
+
+.harmony-strip__timeline small {
+  color: var(--muted);
+}
+
 .practice-sidebar {
   display: grid;
   gap: 14px;

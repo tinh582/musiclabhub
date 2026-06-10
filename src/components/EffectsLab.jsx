@@ -3,7 +3,7 @@ import { CATALOG, buildCatalog } from '../data/catalog';
 import { useLocale } from '../i18n/LocaleProvider';
 import { useAudioFeatures } from '../hooks/useAudioFeatures';
 
-export function EffectsLab({ workspaceAudio = null, saveAnalysis = null }) {
+export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleHandoff = null, clearModuleHandoff = null }) {
   const { t } = useLocale();
   const localizedCatalog = buildCatalog(t);
   const [fileUrl, setFileUrl] = useState((localizedCatalog && localizedCatalog[0] && localizedCatalog[0].audioUrl) || '/audio/sample1.mp3');
@@ -44,6 +44,19 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null }) {
     setIsPlaying(false);
     setAudioError(null);
   }, [workspaceAudio]);
+
+  useEffect(() => {
+    if (moduleHandoff?.type !== 'restore-analysis' || moduleHandoff.payload?.slug !== 'effects') return;
+    const snapshot = moduleHandoff.payload.snapshot || {};
+    if (snapshot.fileUrl && !snapshot.fileUrl.startsWith('blob:')) setFileUrl(snapshot.fileUrl);
+    if (Number.isFinite(snapshot.wet)) setWet(snapshot.wet);
+    if (Number.isFinite(snapshot.delayTime)) setDelayTime(snapshot.delayTime);
+    if (Number.isFinite(snapshot.feedback)) setFeedback(snapshot.feedback);
+    if (Number.isFinite(snapshot.cutoff)) setCutoff(snapshot.cutoff);
+    if (Number.isFinite(snapshot.distortion)) setDistortion(snapshot.distortion);
+    if (Number.isFinite(snapshot.reverbSize)) setReverbSize(snapshot.reverbSize);
+    clearModuleHandoff?.();
+  }, [moduleHandoff, clearModuleHandoff]);
 
   function ensureAudioContext() {
     if (ctxRef.current && ctxRef.current.state === 'closed') {
@@ -273,11 +286,20 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null }) {
       title: `${analysis.estimatedKey} smart effects profile`,
       source: workspaceAudio?.name || 'Effects audio',
       metrics: [
-        { label: 'Cutoff', value: `${Math.round(cutoff)} Hz` },
+        { label: 'Key', value: analysis.estimatedKey },
+        { label: 'First chord', value: analysis.chordTimeline?.[0]?.chord || 'n/a' },
         { label: 'Wet', value: `${Math.round(wet * 100)}%` },
-        { label: 'Delay', value: `${delayTime.toFixed(2)}s` },
         { label: 'Reverb', value: `${reverbSize.toFixed(1)}s` },
       ],
+      snapshot: {
+        fileUrl: fileUrl.startsWith('blob:') ? '' : fileUrl,
+        wet,
+        delayTime,
+        feedback,
+        cutoff,
+        distortion,
+        reverbSize,
+      },
     });
   }
 
@@ -363,6 +385,19 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null }) {
             <article className="profile-card"><p>Brightness</p><strong>{Math.round(analysis.spectralCentroid)} Hz</strong></article>
             <article className="profile-card"><p>Dynamic range</p><strong>{analysis.dynamicRangeDb.toFixed(1)} dB</strong></article>
             <article className="profile-card"><p>Noisiness</p><strong>{Math.round(analysis.spectralFlatness * 100)}%</strong></article>
+          </div>
+        ) : null}
+        {analysis?.chordTimeline?.length ? (
+          <div className="harmony-strip">
+            <p className="eyebrow">Detected chords</p>
+            <div className="harmony-strip__timeline">
+              {analysis.chordTimeline.slice(0, 16).map((entry) => (
+                <span key={`${entry.time}-${entry.chord}`} title={`${entry.time.toFixed(1)}s · ${Math.round(entry.confidence * 100)}% match`}>
+                  <strong>{entry.chord}</strong>
+                  <small>{entry.time.toFixed(1)}s</small>
+                </span>
+              ))}
+            </div>
           </div>
         ) : null}
 

@@ -3,6 +3,13 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useLocale } from '../i18n/LocaleProvider';
 import { useSiteContent } from '../hooks/useSiteContent';
 import { supabase } from '../lib/supabaseClient';
+import {
+  ANALYSIS_HISTORY_KEY,
+  createAnalysisEntry,
+  createRestoreHandoff,
+  readAnalysisHistory,
+  writeAnalysisHistory,
+} from '../utils/analysisHistory';
 
 function getDisplayName(user) {
   if (!user) {
@@ -27,13 +34,7 @@ export function Layout() {
   const [currentUserName, setCurrentUserName] = useState(null);
   const [workspaceAudio, setWorkspaceAudio] = useState(null);
   const [moduleHandoff, setModuleHandoff] = useState(null);
-  const [analysisHistory, setAnalysisHistory] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('mlh_analysis_history') || '[]');
-    } catch (error) {
-      return [];
-    }
-  });
+  const [analysisHistory, setAnalysisHistory] = useState(() => readAnalysisHistory());
   const [historyOpen, setHistoryOpen] = useState(false);
   const workspaceUrlRef = useRef(null);
 
@@ -79,29 +80,29 @@ export function Layout() {
   const clearModuleHandoff = () => setModuleHandoff(null);
 
   const saveAnalysis = (entry) => {
-    const nextEntry = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      createdAt: new Date().toISOString(),
-      ...entry,
-    };
+    const nextEntry = createAnalysisEntry(entry);
     setAnalysisHistory((current) => {
-      const next = [nextEntry, ...current].slice(0, 40);
-      localStorage.setItem('mlh_analysis_history', JSON.stringify(next));
-      return next;
+      return writeAnalysisHistory([nextEntry, ...current]);
     });
   };
 
   const removeAnalysis = (id) => {
     setAnalysisHistory((current) => {
       const next = current.filter((entry) => entry.id !== id);
-      localStorage.setItem('mlh_analysis_history', JSON.stringify(next));
-      return next;
+      return writeAnalysisHistory(next);
     });
   };
 
   const clearAnalysisHistory = () => {
-    localStorage.removeItem('mlh_analysis_history');
+    localStorage.removeItem(ANALYSIS_HISTORY_KEY);
     setAnalysisHistory([]);
+  };
+
+  const restoreAnalysis = (entry) => {
+    const restoreHandoff = createRestoreHandoff(entry);
+    if (restoreHandoff) setModuleHandoff(restoreHandoff);
+    navigate(`/feature/${entry.slug}`);
+    setHistoryOpen(false);
   };
 
   useEffect(() => {
@@ -279,10 +280,9 @@ export function Layout() {
                     ))}
                   </div>
                   <div className="history-item__actions">
-                    <button type="button" className="mini-button" onClick={() => {
-                      navigate(`/feature/${entry.slug}`);
-                      setHistoryOpen(false);
-                    }}>Open</button>
+                    <button type="button" className="mini-button" onClick={() => restoreAnalysis(entry)}>
+                      {entry.snapshot ? 'Restore' : 'Open'}
+                    </button>
                     <button type="button" className="mini-button" onClick={() => removeAnalysis(entry.id)}>Remove</button>
                   </div>
                 </article>
