@@ -4,8 +4,9 @@ import { CATALOG, buildCatalog } from '../data/catalog';
 import { useAudioFeatures } from '../hooks/useAudioFeatures';
 import { formatDuration } from '../utils/audioFeatures';
 import { evaluateClassifications } from '../utils/modelEvaluation';
+import { resolveApiBase } from '../utils/apiBase';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://localhost:5174';
+const API_BASE = resolveApiBase(import.meta.env.VITE_API_BASE, import.meta.env.PROD);
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));

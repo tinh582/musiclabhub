@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLocale } from '../i18n/LocaleProvider';
+import { resolveApiBase } from '../utils/apiBase';
 
 const TOKEN_KEY = 'spotify_access_token';
 const TOKEN_EXPIRY_KEY = 'spotify_access_token_expiry';
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://localhost:5174';
+const API_BASE = resolveApiBase(import.meta.env.VITE_API_BASE, import.meta.env.PROD);
 
 export function SpotifyCallbackPage() {
   const { t } = useLocale();

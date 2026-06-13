@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useOutletContext } from 'react-router-dom';
 import { useLocale } from '../i18n/LocaleProvider';
+import { resolveApiBase } from '../utils/apiBase';
 
 const STORAGE_KEYS = {
   saved: 'mlh_saved_recommendations',
@@ -9,7 +10,7 @@ const STORAGE_KEYS = {
 
 const TOKEN_KEY = 'spotify_access_token';
 const TOKEN_EXPIRY_KEY = 'spotify_access_token_expiry';
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://localhost:5174';
+const API_BASE = resolveApiBase(import.meta.env.VITE_API_BASE, import.meta.env.PROD);
 
 function readJson(key, fallback) {
   try {

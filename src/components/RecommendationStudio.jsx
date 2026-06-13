@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocale } from '../i18n/LocaleProvider';
+import { resolveApiBase } from '../utils/apiBase';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 
@@ -193,7 +194,7 @@ const SPOTIFY_SEEDS = [
   { label: 'Gospel', seedGenre: 'gospel', energy: 0.58, valence: 0.7, danceability: 0.5, tempo: 98 },
 ];
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://localhost:5174';
+const API_BASE = resolveApiBase(import.meta.env.VITE_API_BASE, import.meta.env.PROD);
 
 export function RecommendationStudio() {
   const outletContext = useOutletContext();

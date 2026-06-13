@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { useLocale } from '../i18n/LocaleProvider';
+import { resolveApiBase } from '../utils/apiBase';
 import { useNavigate } from 'react-router-dom';
 import { computeAudioBufferFeatures } from '../utils/audioFeatures';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://localhost:5174';
+const API_BASE = resolveApiBase(import.meta.env.VITE_API_BASE, import.meta.env.PROD);
 
 function autoCorrelate(buffer, sampleRate) {
   const size = buffer.length;
