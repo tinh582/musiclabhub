@@ -3,6 +3,7 @@ import { CATALOG, buildCatalog } from '../data/catalog';
 import { useLocale } from '../i18n/LocaleProvider';
 import { useAudioFeatures } from '../hooks/useAudioFeatures';
 import { equalPowerMix, processingHeadroom, PROCESSING_QUALITY, qualityConfig } from '../utils/audioProcessing';
+import { AIAnalysisStream } from './AIAnalysisStream';
 
 export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleHandoff = null, clearModuleHandoff = null }) {
   const { t } = useLocale();
@@ -410,6 +411,24 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleH
           onError={() => setAudioError('Audio failed to load. Check the sample URL or file.')} 
         />
         {audioError ? <p style={{ marginTop: 8, color: 'var(--coral)' }}>{audioError}</p> : null}
+        <AIAnalysisStream
+          active={analysisLoading}
+          title="Designing an intelligent effects profile"
+          model="Spectral, dynamic, rhythm, and harmonic feature engine"
+          steps={[
+            'Decode and inspect signal quality',
+            'Measure brightness, noisiness, and dynamics',
+            'Estimate tempo, key, and chord movement',
+            'Calculate effect-safe gain and timing',
+            'Prepare adaptive effect recommendations',
+          ]}
+          findings={analysis ? [
+            { label: 'Tonal center', value: analysis.estimatedKey },
+            { label: 'Signal texture', value: analysis.spectralFlatness > 0.22 ? 'Noisy' : 'Tonal' },
+            { label: 'Dynamic range', value: `${analysis.dynamicRangeDb.toFixed(1)} dB` },
+            { label: 'Suggested profile', value: `${qualityConfig(quality).label} · ${Math.round(wet * 100)}% wet` },
+          ] : []}
+        />
         {analysis ? (
           <div className="profile-strip" style={{ marginTop: 12 }}>
             <article className="profile-card"><p>Estimated key</p><strong>{analysis.estimatedKey}</strong></article>

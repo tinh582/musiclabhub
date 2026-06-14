@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocale } from '../i18n/LocaleProvider';
 import { useAudioFeatures } from '../hooks/useAudioFeatures';
+import { AIAnalysisStream } from './AIAnalysisStream';
 
 function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v));
@@ -562,6 +563,25 @@ export function VisualizationsLab({ workspaceAudio = null, saveAnalysis = null, 
               ) : null}
             </div>
           ) : null}
+
+          <AIAnalysisStream
+            active={profileLoading}
+            title="Interpreting the audio scene"
+            model="FFT spectrum + rhythm and harmonic inference"
+            steps={[
+              'Read waveform amplitude and dynamics',
+              'Transform audio into frequency bands',
+              'Track spectral texture and brightness',
+              'Infer tempo, key, and chord sequence',
+              'Select visualization parameters from the signal',
+            ]}
+            findings={audioProfile ? [
+              { label: 'Key', value: audioProfile.estimatedKey },
+              { label: 'Tempo', value: `${audioProfile.tempo || 'n/a'} BPM` },
+              { label: 'Brightness', value: `${Math.round(audioProfile.spectralCentroid)} Hz` },
+              { label: 'Texture', value: audioProfile.spectralFlatness > 0.22 ? 'Noisy' : 'Tonal' },
+            ] : []}
+          />
 
           <div className="meter-block" style={{ marginTop: 16 }}>
             <p className="eyebrow">VU Meter (RMS)</p>

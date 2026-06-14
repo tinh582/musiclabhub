@@ -5,6 +5,7 @@ import { useAudioFeatures } from '../hooks/useAudioFeatures';
 import { formatDuration } from '../utils/audioFeatures';
 import { evaluateClassifications } from '../utils/modelEvaluation';
 import { resolveApiBase } from '../utils/apiBase';
+import { AIAnalysisStream } from './AIAnalysisStream';
 
 const API_BASE = resolveApiBase(import.meta.env.VITE_API_BASE, import.meta.env.PROD);
 
@@ -98,6 +99,12 @@ export function ClassificationLab({ workspaceAudio = null, saveAnalysis = null, 
   const chartCatalog = useMemo(() => (customTrack ? [...catalog, customTrack] : catalog), [catalog, customTrack]);
   const genreColors = ['var(--teal)', 'var(--blue)', 'var(--gold)', 'var(--coral)', '#b69cff', '#8fe388', '#ffb3d1', '#9fe7ff'];
   const selectedGenreIndex = Math.max(0, genres.indexOf(selected?.genre));
+  const aiFindings = audioInfo && probs.length ? [
+    { label: 'Genre decision', value: probs[0].genre, detail: `${Math.round(probs[0].prob * 100)}% model score` },
+    { label: 'Tonal center', value: audioInfo.estimatedKey, detail: `${Math.round(audioInfo.keyConfidence * 100)}% profile match` },
+    { label: 'Tempo', value: `${audioInfo.tempo || 'n/a'} BPM`, detail: audioInfo.tempoMethod || 'Rhythm analysis' },
+    { label: 'Chord path', value: audioInfo.chordTimeline.slice(0, 5).map((entry) => entry.chord).join(' · ') || 'n/a' },
+  ] : [];
 
   const nearestTracks = useMemo(() => {
     if (!selected) return [];
@@ -484,6 +491,20 @@ export function ClassificationLab({ workspaceAudio = null, saveAnalysis = null, 
                 </div>
               </div>
             </div>
+
+            <AIAnalysisStream
+              active={audioLoading || loadingModel || (!usePretrained && trainProgress < 100)}
+              title={customSource ? `Analyzing ${customSource.title}` : `Inspecting ${selected.title}`}
+              model="TensorFlow.js genre classifier + chroma/rhythm analysis"
+              steps={[
+                'Decode and normalize the audio signal',
+                'Measure energy, dynamics, and spectral shape',
+                'Build rhythm and chroma representations',
+                'Run the neural genre classifier',
+                'Compare key profiles and chord templates',
+              ]}
+              findings={aiFindings}
+            />
 
             <div className="profile-strip" style={{ marginTop: 12 }}>
               <article className="profile-card">

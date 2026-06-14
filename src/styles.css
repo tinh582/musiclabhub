@@ -41,6 +41,109 @@
   color: var(--muted);
 }
 
+.ai-stream {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid rgba(110, 240, 209, 0.24);
+  background: #081722;
+}
+
+.ai-stream__header,
+.ai-stream__model,
+.ai-stream__steps li,
+.ai-stream__findings {
+  display: flex;
+  align-items: center;
+}
+
+.ai-stream__header {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ai-stream__header h4 {
+  margin: 2px 0 0;
+  font-size: 1rem;
+}
+
+.ai-stream__header > span {
+  color: var(--teal);
+  font-weight: 700;
+}
+
+.ai-stream__model {
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.ai-stream__pulse {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--teal);
+}
+
+.ai-stream.is-active .ai-stream__pulse {
+  animation: ai-pulse 900ms ease-in-out infinite alternate;
+}
+
+.ai-stream__steps {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ai-stream__steps li {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 8px;
+  min-height: 32px;
+  color: var(--muted);
+}
+
+.ai-stream__steps li.is-current {
+  color: #ffffff;
+}
+
+.ai-stream__steps li.is-complete {
+  color: var(--teal);
+}
+
+.ai-stream__steps small {
+  color: inherit;
+}
+
+.ai-stream__findings {
+  align-items: stretch;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.ai-stream__findings > div {
+  display: grid;
+  flex: 1 0 130px;
+  gap: 3px;
+  padding: 10px;
+  border-left: 2px solid var(--blue);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.ai-stream__findings span,
+.ai-stream__findings small {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+@keyframes ai-pulse {
+  from { opacity: 0.35; transform: scale(0.8); }
+  to { opacity: 1; transform: scale(1.2); }
+}
+
 .workspace-upload input {
   position: absolute;
   width: 1px;

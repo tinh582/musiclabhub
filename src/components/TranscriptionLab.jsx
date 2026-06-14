@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { useLocale } from '../i18n/LocaleProvider';
 import { resolveApiBase } from '../utils/apiBase';
+import { AIAnalysisStream } from './AIAnalysisStream';
 import { useNavigate } from 'react-router-dom';
 import { computeAudioBufferFeatures } from '../utils/audioFeatures';
 
@@ -160,6 +161,12 @@ export function TranscriptionLab({
 
   const { t } = useLocale();
   const melodicProfile = useMemo(() => inferMelodicProfile(notes), [notes]);
+  const transcriptionFindings = notes.length ? [
+    { label: 'Detected events', value: String(analysisSummary?.noteCount || notes.length) },
+    { label: 'Pitch confidence', value: `${Math.round((analysisSummary?.averageConfidence || 0) * 100)}%` },
+    { label: 'Estimated key', value: melodicProfile?.key || 'n/a', detail: melodicProfile ? `${Math.round(melodicProfile.confidence * 100)}% scale fit` : '' },
+    { label: 'Tempo', value: `${tempo} BPM` },
+  ] : [];
 
   useEffect(() => {
     if (moduleHandoff?.type !== 'restore-analysis' || moduleHandoff.payload?.slug !== 'transcription') return;
@@ -773,6 +780,20 @@ export function TranscriptionLab({
               </div>
             </div>
           </div>
+
+          <AIAnalysisStream
+            active={loading}
+            title="Listening for notes and musical structure"
+            model="librosa pYIN service with local pitch-worker fallback"
+            steps={[
+              'Decode audio and build the waveform',
+              'Estimate tempo and rhythmic pulse',
+              'Track fundamental pitch frame by frame',
+              'Group stable pitches into note events',
+              'Infer key, range, and notation timing',
+            ]}
+            findings={transcriptionFindings}
+          />
 
           <canvas ref={canvasRef} className="wave-canvas" style={{ marginTop: 16, width: '100%' }} />
 
