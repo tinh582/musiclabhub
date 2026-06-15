@@ -200,7 +200,7 @@ export function Layout() {
 
   return (
     <div className="app-shell">
-      <a className="skip-link" href="#main-content">Skip to main content</a>
+      <a className="skip-link" href="#main-content">{t('layout.skip', 'Skip to main content')}</a>
       <aside className="sidebar">
         <NavLink to="/" className="brand-block">
           <div className="brand-mark">MLH</div>
@@ -265,7 +265,7 @@ export function Layout() {
                 />
               </button>
               {workspaceAudio ? (
-                <button type="button" className="mini-button" onClick={clearWorkspaceAudio}>Clear</button>
+                <button type="button" className="mini-button" onClick={clearWorkspaceAudio}>{t('common.clear', 'Clear')}</button>
               ) : null}
             </div>
             {moduleHandoff ? (
@@ -287,17 +287,17 @@ export function Layout() {
         </header>
 
         {historyOpen ? (
-          <section className="history-drawer" id="analysis-history" aria-label="Analysis history">
+          <section className="history-drawer" id="analysis-history" aria-label={t('history.title', 'Analysis history')}>
             <div className="history-drawer__header">
               <div>
-                <p className="eyebrow">Analysis history</p>
-                <strong>Saved results</strong>
+                <p className="eyebrow">{t('history.title', 'Analysis history')}</p>
+                <strong>{t('history.saved', 'Saved results')}</strong>
               </div>
               <div className="history-drawer__actions">
-                <button type="button" className="mini-button" onClick={() => downloadReport(analysisHistory)} disabled={!analysisHistory.length}>Report</button>
+                <button type="button" className="mini-button" onClick={() => downloadReport(analysisHistory)} disabled={!analysisHistory.length}>{t('history.report', 'Report')}</button>
                 <button type="button" className="mini-button" onClick={() => downloadReport(analysisHistory, 'json')} disabled={!analysisHistory.length}>JSON</button>
-                <button type="button" className="mini-button" onClick={clearAnalysisHistory} disabled={!analysisHistory.length}>Clear all</button>
-                <button type="button" className="mini-button" onClick={() => setHistoryOpen(false)}>Close</button>
+                <button type="button" className="mini-button" onClick={clearAnalysisHistory} disabled={!analysisHistory.length}>{t('history.clearAll', 'Clear all')}</button>
+                <button type="button" className="mini-button" onClick={() => setHistoryOpen(false)}>{t('common.close', 'Close')}</button>
               </div>
             </div>
             <div className="history-list">
@@ -316,13 +316,13 @@ export function Layout() {
                   </div>
                   <div className="history-item__actions">
                     <button type="button" className="mini-button" onClick={() => restoreAnalysis(entry)}>
-                      {entry.snapshot ? 'Restore' : 'Open'}
+                      {entry.snapshot ? t('history.restore', 'Restore') : t('common.open', 'Open')}
                     </button>
-                    <button type="button" className="mini-button" onClick={() => downloadReport([entry])}>Report</button>
-                    <button type="button" className="mini-button" onClick={() => removeAnalysis(entry.id)}>Remove</button>
+                    <button type="button" className="mini-button" onClick={() => downloadReport([entry])}>{t('history.report', 'Report')}</button>
+                    <button type="button" className="mini-button" onClick={() => removeAnalysis(entry.id)}>{t('common.remove', 'Remove')}</button>
                   </div>
                 </article>
-              )) : <p className="practice-note">No saved analyses yet.</p>}
+              )) : <p className="practice-note">{t('history.empty', 'No saved analyses yet.')}</p>}
             </div>
           </section>
         ) : null}

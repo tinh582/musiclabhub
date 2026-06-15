@@ -384,7 +384,7 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleH
           <button className="btn" onClick={applySmartSettings} disabled={!analysis || analysisLoading}>
             {analysisLoading ? 'Analyzing...' : 'Smart settings'}
           </button>
-          <button className="btn" onClick={saveCurrentAnalysis} disabled={!analysis}>Save analysis</button>
+          <button className="btn" onClick={saveCurrentAnalysis} disabled={!analysis}>{t('common.saveAnalysis', 'Save analysis')}</button>
         </div>
       </div>
 

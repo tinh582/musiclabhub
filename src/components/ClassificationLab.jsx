@@ -524,7 +524,7 @@ export function ClassificationLab({ workspaceAudio = null, saveAnalysis = null, 
             <div style={{ marginTop: 12 }}>
               <audio ref={audioRef} onEnded={() => setPlaying(false)} />
               <button className="button button--primary" onClick={() => playDemo(selected)}>{playing ? t('rec.stop', 'Stop') : t('class.playDemo', 'Play demo')}</button>
-              <button className="button button--ghost" onClick={saveCurrentAnalysis} disabled={!probs.length}>Save analysis</button>
+              <button className="button button--ghost" onClick={saveCurrentAnalysis} disabled={!probs.length}>{t('common.saveAnalysis', 'Save analysis')}</button>
             </div>
 
             <div style={{ marginTop: 12 }}>

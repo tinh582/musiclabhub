@@ -448,7 +448,7 @@ export function PracticeRoom({ moduleHandoff, clearModuleHandoff }) {
           </article>
 
           <article className="practice-card">
-            <p className="eyebrow">Adaptive coach</p>
+            <p className="eyebrow">{t('practice.coach', 'Adaptive coach')}</p>
             <div className="practice-log">
               <div className="practice-log__item"><strong>Accuracy</strong><span>{coaching.accuracy}%</span></div>
               <div className="practice-log__item"><strong>Stability</strong><span>{coaching.stability}%</span></div>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocale } from '../i18n/LocaleProvider';
 
 export function AIAnalysisStream({
   active = false,
@@ -7,6 +8,7 @@ export function AIAnalysisStream({
   findings = [],
   model = 'Local audio intelligence',
 }) {
+  const { t } = useLocale();
   const [visibleStep, setVisibleStep] = useState(active ? 0 : steps.length);
 
   useEffect(() => {
@@ -27,10 +29,12 @@ export function AIAnalysisStream({
     <section className={`ai-stream${active ? ' is-active' : ' is-complete'}`} aria-label={title}>
       <div className="ai-stream__header">
         <div>
-          <p className="eyebrow">Analysis process</p>
+          <p className="eyebrow">{t('ai.process', 'Analysis process')}</p>
           <h4>{title}</h4>
         </div>
-        <span role="status" aria-live="polite">{active ? 'Analyzing now' : 'Analysis complete'}</span>
+        <span role="status" aria-live="polite">
+          {active ? t('ai.status.active', 'Analyzing now') : t('ai.status.complete', 'Analysis complete')}
+        </span>
       </div>
 
       <div className="ai-stream__model">
@@ -46,7 +50,13 @@ export function AIAnalysisStream({
             <li key={step} className={`${complete ? 'is-complete' : ''}${current ? ' is-current' : ''}`}>
               <span aria-hidden="true">{complete ? '✓' : current ? '•' : ''}</span>
               <strong>{step}</strong>
-              <small>{complete ? 'Done' : current ? 'Running' : 'Queued'}</small>
+              <small>
+                {complete
+                  ? t('ai.step.done', 'Done')
+                  : current
+                    ? t('ai.step.running', 'Running')
+                    : t('ai.step.queued', 'Queued')}
+              </small>
             </li>
           );
         })}

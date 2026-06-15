@@ -427,10 +427,10 @@ export function ComposerLab({ moduleHandoff = null, sendModuleHandoff = null, cl
                     {t('composer.exportMidi', 'Export MIDI')}
                   </button>
                   <button className="button button--ghost" onClick={sendToInstrument}>
-                    Open in Instrument
+                    {t('common.openInstrument', 'Open in Instrument')}
                   </button>
                   <button className="button button--ghost" onClick={sendToPractice}>
-                    Open in Practice
+                    {t('common.openPractice', 'Open in Practice')}
                   </button>
                 </>
               )}

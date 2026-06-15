@@ -409,7 +409,7 @@ export function VisualizationsLab({ workspaceAudio = null, saveAnalysis = null, 
                 {profileLoading ? 'Analyzing...' : 'AI view'}
               </button>
               <button type="button" className="button button--ghost" onClick={saveCurrentAnalysis} disabled={!audioProfile}>
-                Save analysis
+                {t('common.saveAnalysis', 'Save analysis')}
               </button>
             </div>
             <p className="practice-note">{t('viz.loaded', 'Loaded')}: {loadedLabel}</p>

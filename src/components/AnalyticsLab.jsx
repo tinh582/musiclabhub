@@ -245,7 +245,7 @@ export function AnalyticsLab({ saveAnalysis = null, moduleHandoff = null, clearM
           <input type="file" accept=".csv,text/csv" onChange={handleFile} />
           <button className="btn" onClick={() => { if (tempoRef.current) downloadSVG(tempoRef.current, 'tempo.svg'); }}>{t('analytics.export.tempoSvg', 'Export Tempo SVG')}</button>
           <button className="btn" onClick={() => { if (tempoRef.current) downloadPNG(tempoRef.current, 'tempo.png'); }}>{t('analytics.export.tempoPng', 'Export Tempo PNG')}</button>
-          <button className="btn" onClick={saveCurrentAnalysis} disabled={!filtered.length}>Save analysis</button>
+          <button className="btn" onClick={saveCurrentAnalysis} disabled={!filtered.length}>{t('common.saveAnalysis', 'Save analysis')}</button>
         </div>
       </div>
 

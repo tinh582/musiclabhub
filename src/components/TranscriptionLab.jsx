@@ -769,13 +769,13 @@ export function TranscriptionLab({
                 <button className="button button--ghost" type="button" onClick={exportQuantizedMusicXML} disabled={notes.length === 0}>{t('transcription.exportQuantizedXml', 'Export quantized XML')}</button>
                 <button className="button button--ghost" type="button" onClick={exportQuantizedMIDI} disabled={notes.length === 0}>{t('transcription.exportMidi', 'Export MIDI')}</button>
                 <button className="button button--ghost" type="button" onClick={sendToComposer} disabled={notes.length === 0}>
-                  Open in Composer
+                  {t('common.openComposer', 'Open in Composer')}
                 </button>
                 <button className="button button--ghost" type="button" onClick={sendToPractice} disabled={notes.length === 0}>
-                  Open in Practice
+                  {t('common.openPractice', 'Open in Practice')}
                 </button>
                 <button className="button button--ghost" type="button" onClick={saveCurrentAnalysis} disabled={notes.length === 0}>
-                  Save analysis
+                  {t('common.saveAnalysis', 'Save analysis')}
                 </button>
               </div>
             </div>
