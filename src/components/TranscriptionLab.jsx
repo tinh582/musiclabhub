@@ -3,7 +3,6 @@ import { useLocale } from '../i18n/LocaleProvider';
 import { resolveApiBase } from '../utils/apiBase';
 import { AIAnalysisStream } from './AIAnalysisStream';
 import { useNavigate } from 'react-router-dom';
-import { computeAudioBufferFeatures } from '../utils/audioFeatures';
 
 const API_BASE = resolveApiBase(import.meta.env.VITE_API_BASE, import.meta.env.PROD);
 
@@ -109,6 +108,7 @@ export function TranscriptionLab({
   const playbackStartRef = useRef(null);
   const animationRef = useRef(null);
   const workspaceLoadedRef = useRef('');
+  const workerPendingRef = useRef(false);
 
   const sampleTracks = [
     { label: 'Sample 1', url: '/audio/sample1.mp3' },
@@ -127,10 +127,9 @@ export function TranscriptionLab({
     workerRef.current.onmessage = (ev) => {
       const data = ev.data;
       if (data.status === 'done') {
-        const events = data.events.map((it, index, all) => {
+        const events = data.events.map((it) => {
           const startTime = Number(it.time || 0);
-          const nextStart = all[index + 1] ? Number(all[index + 1].time || startTime + 0.2) : startTime + 0.2;
-          const duration = Math.max(0.02, nextStart - startTime);
+          const duration = Math.max(0.16, Number(it.duration || 0.2));
           return {
             time: startTime,
             startTime,
@@ -139,11 +138,17 @@ export function TranscriptionLab({
             frequency: it.frequency,
             note: it.frequency ? frequencyToNoteName(it.frequency) : 'Rest',
             kind: it.frequency ? 'note' : 'rest',
-            confidence: null,
+            confidence: Number(it.confidence || 0),
           };
         });
         setNotes(events);
+        setAnalysisSummary(data.summary || null);
         drawPianoRoll(events, data.duration);
+        workerPendingRef.current = false;
+        setLoading(false);
+      } else if (data.status === 'error') {
+        workerPendingRef.current = false;
+        setLoading(false);
       }
     };
 
@@ -275,10 +280,6 @@ export function TranscriptionLab({
     const audioBuffer = await audioCtxRef.current.decodeAudioData(arrayBuffer);
     bufferRef.current = audioBuffer;
     setBufferDuration(audioBuffer.duration);
-    const audioFeatures = computeAudioBufferFeatures(audioBuffer);
-    if (audioFeatures.tempo) {
-      setTempo(audioFeatures.tempo);
-    }
     drawWaveform(audioBuffer);
     setXmlPreview('');
     setAnalysisSummary(null);
@@ -295,7 +296,9 @@ export function TranscriptionLab({
 
     // send channel data to worker for fallback detection
     const channelData = audioBuffer.getChannelData(0).slice();
+    workerPendingRef.current = true;
     workerRef.current.postMessage({ cmd: 'detect', audioBuffer: channelData.buffer, sampleRate: audioBuffer.sampleRate }, [channelData.buffer]);
+    return 'worker';
   }
 
   useEffect(() => {
@@ -311,8 +314,11 @@ export function TranscriptionLab({
       .catch((error) => {
         if (active) console.error(error);
       })
+      .then((result) => {
+        if (active && result !== 'worker') setLoading(false);
+      })
       .finally(() => {
-        if (active) setLoading(false);
+        if (!active) workerPendingRef.current = false;
       });
     return () => {
       active = false;
@@ -327,11 +333,12 @@ export function TranscriptionLab({
     setLoading(true);
     try {
       const arrayBuffer = await file.arrayBuffer();
-      await processArrayBuffer(arrayBuffer, file.name, file);
+      const result = await processArrayBuffer(arrayBuffer, file.name, file);
+      if (result === 'worker') return;
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (!workerPendingRef.current) setLoading(false);
     }
   }
 
@@ -344,11 +351,12 @@ export function TranscriptionLab({
       const resp = await fetch(track.url);
       const blob = await resp.blob();
       const arrayBuffer = await blob.arrayBuffer();
-      await processArrayBuffer(arrayBuffer, track.label, blob);
+      const result = await processArrayBuffer(arrayBuffer, track.label, blob);
+      if (result === 'worker') return;
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (!workerPendingRef.current) setLoading(false);
     }
   }
 
@@ -395,13 +403,16 @@ export function TranscriptionLab({
 
     const data = audioBuffer.numberOfChannels > 0 ? audioBuffer.getChannelData(0) : new Float32Array(0);
     const step = Math.ceil(data.length / width);
+    const samplesPerColumn = Math.min(96, step);
+    const sampleStride = Math.max(1, Math.floor(step / samplesPerColumn));
     const amp = height / 2;
     ctx.fillStyle = 'rgba(110,240,209,0.6)';
     for (let i = 0; i < width; i += 1) {
       let min = 1.0;
       let max = -1.0;
-      for (let j = 0; j < step; j += 1) {
+      for (let j = 0; j < step; j += sampleStride) {
         const datum = data[(i * step) + j];
+        if (datum === undefined) break;
         if (datum < min) min = datum;
         if (datum > max) max = datum;
       }

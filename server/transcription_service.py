@@ -202,7 +202,7 @@ def analyze_audio(y: np.ndarray, sample_rate: int, tempo: float = 120.0) -> dict
             })
 
     labels: list[str | None] = []
-    min_confidence = 0.55
+    min_confidence = 0.68
     for frequency, confidence in zip(f0, confidences):
         if np.isfinite(frequency) and confidence >= min_confidence:
             midi_value = 12 * (math.log(float(frequency) / 440.0) / math.log(2)) + 69
@@ -215,8 +215,8 @@ def analyze_audio(y: np.ndarray, sample_rate: int, tempo: float = 120.0) -> dict
     notes = []
     current_label = labels[0] if labels else None
     segment_start = 0
-    min_note_duration = 0.12
-    min_rest_duration = 0.18
+    min_note_duration = 0.18
+    min_rest_duration = 0.22
 
     def finalize_segment(start_index: int, end_index: int, label: str | None) -> None:
         segment_start_time = float(frame_times[start_index]) if start_index < frame_times.size else 0.0
@@ -270,7 +270,7 @@ def analyze_audio(y: np.ndarray, sample_rate: int, tempo: float = 120.0) -> dict
             previous = merged_notes[-1]
             same_kind = previous.get('kind') == note.get('kind')
             same_note = previous.get('note') == note.get('note')
-            close_enough = float(note['startTime']) - float(previous['endTime']) <= 0.06
+            close_enough = float(note['startTime']) - float(previous['endTime']) <= 0.1
             if same_kind and same_note and close_enough:
                 previous['endTime'] = float(note['endTime'])
                 previous['duration'] = float(previous['endTime']) - float(previous['startTime'])
