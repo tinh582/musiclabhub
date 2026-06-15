@@ -1,7 +1,5 @@
 import { YIN } from 'pitchfinder';
 
-let detector = null;
-
 function median(values) {
   if (!values.length) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -19,7 +17,6 @@ function midiToFrequency(midi) {
 onmessage = function (e) {
   const { cmd, audioBuffer, sampleRate } = e.data;
   if (cmd === 'init') {
-    detector = YIN({ sampleRate });
     postMessage({ status: 'ok' });
     return;
   }
@@ -28,16 +25,18 @@ onmessage = function (e) {
     try {
       const data = new Float32Array(audioBuffer);
       const frameSize = 2048;
-      const hop = 1024;
-      const detectorLocal = detector || YIN({ sampleRate });
+      const hop = 512;
+      // AudioContext decoding commonly returns 44.1 or 48 kHz. The detector
+      // must be created from the actual buffer rate or every pitch is shifted.
+      const detectorLocal = YIN({ sampleRate, threshold: 0.15 });
       const frames = [];
       for (let i = 0; i + frameSize < data.length; i += hop) {
         const frame = data.subarray(i, i + frameSize);
         let energy = 0;
         for (let j = 0; j < frame.length; j += 1) energy += frame[j] * frame[j];
         const rms = Math.sqrt(energy / frame.length);
-        const frequency = rms >= 0.012 ? detectorLocal(frame) || -1 : -1;
-        const valid = frequency >= 65 && frequency <= 2100;
+        const frequency = rms >= 0.006 ? detectorLocal(frame) || -1 : -1;
+        const valid = frequency >= 55 && frequency <= 2400;
         frames.push({
           index: i,
           midi: valid ? frequencyToMidi(frequency) : null,
@@ -51,11 +50,19 @@ onmessage = function (e) {
 
       // Remove isolated pitch jumps with a local median before event grouping.
       const smoothed = frames.map((frame, index) => {
-        if (frame.midi == null) return frame;
         const neighborhood = frames
           .slice(Math.max(0, index - 2), Math.min(frames.length, index + 3))
           .map((item) => item.midi)
           .filter((value) => value != null);
+        if (frame.midi == null) {
+          // Bridge a single weak frame only when both sides support one pitch.
+          const previous = frames[index - 1]?.midi;
+          const next = frames[index + 1]?.midi;
+          if (previous != null && next != null && Math.abs(previous - next) <= 1) {
+            return { ...frame, midi: Math.round((previous + next) / 2) };
+          }
+          return frame;
+        }
         return { ...frame, midi: median(neighborhood) };
       });
 
@@ -65,10 +72,10 @@ onmessage = function (e) {
       function finalize() {
         if (!cur) return;
         const duration = (cur.endIndex + hop - cur.startIndex) / sampleRate;
-        if (duration >= 0.16 && cur.midis.length >= 4) {
+        if (duration >= 0.1 && cur.midis.length >= 3) {
           const stableMidi = Math.round(median(cur.midis));
           const agreement = cur.midis.filter((value) => Math.abs(value - stableMidi) <= 1).length / cur.midis.length;
-          if (agreement >= 0.7) {
+          if (agreement >= 0.5) {
             events.push({
               time: cur.startIndex / sampleRate,
               duration,
@@ -112,7 +119,9 @@ onmessage = function (e) {
             : 0,
           noteCount: events.length,
           quality: events.length ? 'fallback' : 'low',
-          warning: 'Local fallback detection is optimized for clean single-note recordings.',
+          warning: events.length
+            ? 'Using local pitch estimation. Mixed or polyphonic audio may contain approximate melody notes.'
+            : 'No stable melody was found. Try a louder vocal, piano, or single-instrument section.',
         },
       });
     } catch (err) {

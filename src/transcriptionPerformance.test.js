@@ -16,7 +16,8 @@ describe('transcription responsiveness and stability', () => {
 
   it('segments fallback events by stable quantized pitch', () => {
     expect(worker).toContain('frequencyToMidi');
-    expect(worker).toContain('agreement >= 0.7');
-    expect(worker).toContain('duration >= 0.16');
+    expect(worker).toContain('YIN({ sampleRate');
+    expect(worker).toContain('agreement >= 0.5');
+    expect(worker).toContain('duration >= 0.1');
   });
 });
