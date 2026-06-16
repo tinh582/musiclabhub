@@ -22,5 +22,11 @@ export default defineConfig({
       key: fs.readFileSync(path.resolve(__dirname, 'localhost+2-key.pem')),
       cert: fs.readFileSync(path.resolve(__dirname, 'localhost+2.pem')),
     },
+    proxy: {
+      '/api': {
+        target: process.env.VITE_DEV_API_PROXY || 'http://127.0.0.1:3000',
+        changeOrigin: true,
+      },
+    },
   },
 });

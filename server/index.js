@@ -21,7 +21,8 @@ const redirectUri = process.env.SPOTIFY_REDIRECT_URI || 'https://localhost:5173/
 const authScopes = process.env.SPOTIFY_SCOPES || 'user-read-email user-top-read';
 const transcriptionServiceUrl = process.env.TRANSCRIPTION_SERVICE_URL || 'http://127.0.0.1:8000';
 const useHttps = process.env.USE_HTTPS === 'true';
-const upstreamTimeoutMs = Number(process.env.UPSTREAM_TIMEOUT_MS || 15000);
+const upstreamTimeoutMs = Number(process.env.UPSTREAM_TIMEOUT_MS || 300000);
+const transcriptionUploadLimit = process.env.TRANSCRIPTION_UPLOAD_LIMIT || '200mb';
 const app = express();
 
 app.use(cors({
@@ -184,7 +185,7 @@ app.get('/api/transcription/analyze', (req, res) => {
   });
 });
 
-app.post('/api/transcription/analyze', express.raw({ type: '*/*', limit: '25mb' }), async (req, res) => {
+app.post('/api/transcription/analyze', express.raw({ type: '*/*', limit: transcriptionUploadLimit }), async (req, res) => {
   try {
     if (!req.body?.length) {
       res.status(400).json({ ok: false, error: 'Audio request body is empty.', requestId: req.requestId });
@@ -197,6 +198,7 @@ app.post('/api/transcription/analyze', express.raw({ type: '*/*', limit: '25mb' 
         'X-Sample-Rate': req.headers['x-sample-rate'] || '',
         'X-Duration': req.headers['x-duration'] || '',
         'X-File-Name': req.headers['x-file-name'] || '',
+        'X-Tempo': req.headers['x-tempo'] || '',
       },
       body: req.body,
       signal: AbortSignal.timeout(upstreamTimeoutMs),

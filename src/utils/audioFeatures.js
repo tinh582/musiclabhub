@@ -389,7 +389,7 @@ function estimateTempoFallback(data, sampleRate, minBpm = 55, maxBpm = 210) {
   };
 }
 
-function estimateTempo(data, sampleRate) {
+export function estimateTempo(data, sampleRate) {
   try {
     const analysisData = resampleMono(data, sampleRate, 44100);
     const analysis = new MusicTempo(analysisData);

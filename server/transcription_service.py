@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import math
 import os
+import tempfile
+import base64
 from typing import Any
 
 import librosa
 import numpy as np
+import soundfile as sf
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from lxml import etree
@@ -16,6 +19,7 @@ CORS(app)
 
 
 NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+PIANO_TRANSCRIPTOR = None
 
 
 def frequency_to_note_parts(frequency: float) -> tuple[str, int, int]:
@@ -32,6 +36,10 @@ def frequency_to_note_name(frequency: float) -> str:
     step, alter, octave = frequency_to_note_parts(frequency)
     accidental = '#' if alter else ''
     return f'{step}{accidental}{octave}'
+
+
+def midi_to_frequency(midi_note: int | float) -> float:
+    return float(440.0 * (2 ** ((float(midi_note) - 69.0) / 12.0)))
 
 
 def unique_sorted(values: list[float], minimum_gap: float = 0.01) -> list[float]:
@@ -146,6 +154,259 @@ def build_musicxml(notes: list[dict[str, Any]], tempo: float) -> str:
     ).decode('utf-8')
 
 
+def analyze_audio_piano_model(y: np.ndarray, sample_rate: int, tempo: float = 120.0) -> dict[str, Any] | None:
+    global PIANO_TRANSCRIPTOR
+
+    try:
+        import torch
+        from piano_transcription_inference import PianoTranscription, sample_rate as piano_sample_rate
+    except Exception as error:
+        app.logger.info('Piano transcription model not available: %s', error)
+        return None
+
+    duration = float(len(y) / sample_rate) if sample_rate else 0.0
+    if duration <= 0.0:
+        return None
+
+    try:
+        audio = y.astype(np.float32)
+        audio = librosa.util.normalize(audio) if np.any(audio) else audio
+        if sample_rate != int(piano_sample_rate):
+            audio = librosa.resample(audio, orig_sr=sample_rate, target_sr=int(piano_sample_rate))
+
+        device_name = os.environ.get('PIANO_TRANSCRIPTION_DEVICE', '').strip().lower()
+        if not device_name:
+            device_name = 'cuda' if torch.cuda.is_available() else 'cpu'
+        device = torch.device(device_name)
+
+        if PIANO_TRANSCRIPTOR is None:
+            PIANO_TRANSCRIPTOR = PianoTranscription(device=device, checkpoint_path=None)
+
+        midi_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.mid', delete=False) as midi_file:
+                midi_path = midi_file.name
+
+            transcribed = PIANO_TRANSCRIPTOR.transcribe(audio, midi_path)
+            note_events = transcribed.get('est_note_events') or []
+            pedal_events = transcribed.get('est_pedal_events') or []
+
+            midi_base64 = None
+            if midi_path and os.path.exists(midi_path):
+                with open(midi_path, 'rb') as midi_file:
+                    midi_base64 = base64.b64encode(midi_file.read()).decode('ascii')
+        finally:
+            if midi_path:
+                try:
+                    os.unlink(midi_path)
+                except OSError:
+                    pass
+    except Exception as error:
+        app.logger.warning('Piano transcription failed: %s', error)
+        return None
+
+    notes: list[dict[str, Any]] = []
+    pitch_contour: list[dict[str, float]] = []
+    for event in note_events:
+        start_time = max(0.0, float(event.get('onset_time', 0.0)))
+        end_time = min(duration, max(start_time, float(event.get('offset_time', start_time))))
+        event_duration = end_time - start_time
+        if event_duration < 0.02:
+            continue
+
+        midi_note = int(event.get('midi_note', 60))
+        velocity = int(max(1, min(127, event.get('velocity', 64))))
+        frequency = midi_to_frequency(midi_note)
+        confidence = float(max(0.0, min(1.0, velocity / 127.0)))
+        note = {
+            'time': start_time,
+            'startTime': start_time,
+            'endTime': end_time,
+            'duration': event_duration,
+            'frequency': frequency,
+            'note': frequency_to_note_name(frequency),
+            'kind': 'note',
+            'confidence': confidence,
+            'velocity': velocity,
+        }
+        notes.append(note)
+        pitch_contour.append({
+            'time': start_time,
+            'frequency': frequency,
+            'confidence': confidence,
+        })
+
+    notes.sort(key=lambda note: (float(note['startTime']), float(note.get('frequency') or 0.0)))
+    if not notes:
+        return None
+
+    active_time = sum(float(note['duration']) for note in notes)
+    average_confidence = float(np.mean([note.get('confidence', 0.0) for note in notes])) if notes else 0.0
+    polyphonic_groups = 0
+    previous_start = -1.0
+    for note in notes:
+        start = float(note['startTime'])
+        if previous_start >= 0 and abs(start - previous_start) <= 0.025:
+            polyphonic_groups += 1
+        previous_start = start
+
+    warning = None
+    quality = 'model'
+    if len(notes) > 1500:
+        quality = 'busy'
+        warning = 'Piano transcription found many note events. The MIDI is best treated as an editable draft.'
+
+    xml = build_musicxml(notes, float(tempo))
+
+    return {
+        'duration': duration,
+        'notes': notes,
+        'pitchContour': pitch_contour,
+        'summary': {
+            'voicedRatio': min(1.0, active_time / max(0.001, duration)),
+            'averageConfidence': average_confidence,
+            'noteCount': len(notes),
+            'polyphonicGroups': polyphonic_groups,
+            'pedalCount': len(pedal_events) if pedal_events else 0,
+            'quality': quality,
+            'warning': warning,
+            'model': 'ByteDance high-resolution piano',
+        },
+        'musicxml': xml,
+        'midiBase64': midi_base64,
+        'midiFileName': 'piano-model-transcription.mid',
+        'algorithm': 'piano-transcription-inference',
+    }
+
+
+def analyze_audio_basic_pitch(y: np.ndarray, sample_rate: int, tempo: float = 120.0) -> dict[str, Any] | None:
+    try:
+        from basic_pitch import ICASSP_2022_MODEL_PATH
+        from basic_pitch.inference import predict
+    except Exception:
+        return None
+
+    duration = float(len(y) / sample_rate) if sample_rate else 0.0
+    if duration <= 0.0:
+        return None
+
+    audio = librosa.util.normalize(y.astype(np.float32)) if np.any(y) else y.astype(np.float32)
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
+            temp_path = temp_file.name
+
+        sf.write(temp_path, audio, sample_rate)
+        _, midi_data, note_events = predict(
+            temp_path,
+            ICASSP_2022_MODEL_PATH,
+            onset_threshold=0.42,
+            frame_threshold=0.28,
+            minimum_note_length=60.0,
+            minimum_frequency=librosa.note_to_hz('A0'),
+            maximum_frequency=librosa.note_to_hz('C8'),
+            multiple_pitch_bends=False,
+            melodia_trick=True,
+            midi_tempo=float(tempo),
+        )
+    except Exception as error:
+        app.logger.warning('Basic Pitch transcription unavailable: %s', error)
+        return None
+    finally:
+        if temp_path:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+
+    notes: list[dict[str, Any]] = []
+    pitch_contour: list[dict[str, float]] = []
+    for event in note_events:
+        start_time, end_time, midi_note, amplitude, pitch_bends = event
+        start_time = max(0.0, float(start_time))
+        end_time = min(duration, max(start_time, float(end_time)))
+        event_duration = end_time - start_time
+        if event_duration < 0.035:
+            continue
+
+        frequency = midi_to_frequency(int(midi_note))
+        confidence = float(max(0.0, min(1.0, amplitude)))
+        notes.append({
+            'time': start_time,
+            'startTime': start_time,
+            'endTime': end_time,
+            'duration': event_duration,
+            'frequency': frequency,
+            'note': frequency_to_note_name(frequency),
+            'kind': 'note',
+            'confidence': confidence,
+            'velocity': int(round(127 * confidence)),
+            'pitchBends': [int(value) for value in pitch_bends] if pitch_bends else [],
+        })
+        pitch_contour.append({
+            'time': start_time,
+            'frequency': frequency,
+            'confidence': confidence,
+        })
+
+    notes.sort(key=lambda note: (float(note['startTime']), float(note.get('frequency') or 0.0)))
+    if not notes:
+        return None
+
+    active_time = sum(float(note['duration']) for note in notes)
+    average_confidence = float(np.mean([note.get('confidence', 0.0) for note in notes])) if notes else 0.0
+    polyphonic_groups = 0
+    previous_start = -1.0
+    for note in notes:
+        start = float(note['startTime'])
+        if previous_start >= 0 and abs(start - previous_start) <= 0.025:
+            polyphonic_groups += 1
+        previous_start = start
+
+    warning = None
+    quality = 'model'
+    if len(notes) > 350:
+        quality = 'busy'
+        warning = 'AI transcription found many note events. The MIDI is best treated as an editable draft.'
+
+    xml = build_musicxml(notes, float(tempo))
+    midi_base64 = None
+    midi_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.mid', delete=False) as midi_file:
+            midi_path = midi_file.name
+        midi_data.write(midi_path)
+        with open(midi_path, 'rb') as midi_file:
+            midi_base64 = base64.b64encode(midi_file.read()).decode('ascii')
+    except Exception as error:
+        app.logger.warning('Could not serialize Basic Pitch MIDI: %s', error)
+    finally:
+        if midi_path:
+            try:
+                os.unlink(midi_path)
+            except OSError:
+                pass
+
+    return {
+        'duration': duration,
+        'notes': notes,
+        'pitchContour': pitch_contour,
+        'summary': {
+            'voicedRatio': min(1.0, active_time / max(0.001, duration)),
+            'averageConfidence': average_confidence,
+            'noteCount': len(notes),
+            'polyphonicGroups': polyphonic_groups,
+            'quality': quality,
+            'warning': warning,
+            'model': 'Spotify Basic Pitch',
+        },
+        'musicxml': xml,
+        'midiBase64': midi_base64,
+        'midiFileName': 'basic-pitch-transcription.mid',
+        'algorithm': 'basic-pitch',
+    }
+
+
 def analyze_audio(y: np.ndarray, sample_rate: int, tempo: float = 120.0) -> dict[str, Any]:
     duration = float(len(y) / sample_rate) if sample_rate else 0.0
     if duration <= 0.0:
@@ -163,6 +424,15 @@ def analyze_audio(y: np.ndarray, sample_rate: int, tempo: float = 120.0) -> dict
             'musicxml': build_musicxml([], 120.0),
             'algorithm': 'librosa.pyin',
         }
+
+    if os.environ.get('TRANSCRIPTION_MODEL', 'piano').strip().lower() in {'piano', 'auto'}:
+        piano_result = analyze_audio_piano_model(y, sample_rate, tempo=tempo)
+        if piano_result is not None:
+            return piano_result
+
+    basic_pitch_result = analyze_audio_basic_pitch(y, sample_rate, tempo=tempo)
+    if basic_pitch_result is not None:
+        return basic_pitch_result
 
     y = librosa.util.normalize(y.astype(np.float32)) if np.any(y) else y.astype(np.float32)
     harmonic = librosa.effects.harmonic(y) if np.any(y) else y
@@ -315,6 +585,7 @@ def analyze_audio(y: np.ndarray, sample_rate: int, tempo: float = 120.0) -> dict
             'noteCount': len(notes),
             'quality': quality,
             'warning': warning,
+            'model': 'librosa pYIN fallback',
         },
         'musicxml': xml,
         'algorithm': 'librosa.pyin',
@@ -326,7 +597,7 @@ def health() -> Any:
     return jsonify({
         'ok': True,
         'service': 'transcription',
-        'algorithm': 'librosa.pyin',
+        'algorithm': 'piano-model-with-basic-pitch-and-librosa-fallback',
     })
 
 

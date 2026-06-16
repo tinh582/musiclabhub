@@ -9,3 +9,6 @@ yarn-error.log*
 server/.env
 .env.local
 vite-*.log
+node-api*.log
+__pycache__/
+*.pyc

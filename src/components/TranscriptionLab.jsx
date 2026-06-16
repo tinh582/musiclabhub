@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { useLocale } from '../i18n/LocaleProvider';
 import { resolveApiBase } from '../utils/apiBase';
+import { estimateTempo } from '../utils/audioFeatures';
 import { AIAnalysisStream } from './AIAnalysisStream';
 import { useNavigate } from 'react-router-dom';
 
@@ -114,7 +115,10 @@ export function TranscriptionLab({
   const [playing, setPlaying] = useState(false);
   const [xmlPreview, setXmlPreview] = useState('');
   const [analysisSummary, setAnalysisSummary] = useState(null);
-  const [tempo, setTempo] = useState(120);
+  const [modelMidiBase64, setModelMidiBase64] = useState('');
+  const [modelMidiFileName, setModelMidiFileName] = useState('transcription-model.mid');
+  const [tempo, setTempo] = useState(null);
+  const [tempoSource, setTempoSource] = useState('Not estimated yet');
   const [resolution, setResolution] = useState(16);
   const [triplet, setTriplet] = useState(false);
   const [swing, setSwing] = useState(0); // 0..0.5 fraction
@@ -191,7 +195,8 @@ export function TranscriptionLab({
     { label: 'Detected events', value: String(analysisSummary?.noteCount || notes.length) },
     { label: 'Pitch confidence', value: `${Math.round((analysisSummary?.averageConfidence || 0) * 100)}%` },
     { label: 'Estimated key', value: melodicProfile?.key || 'n/a', detail: melodicProfile ? `${Math.round(melodicProfile.confidence * 100)}% scale fit` : '' },
-    { label: 'Tempo', value: `${tempo} BPM` },
+    { label: 'Model', value: analysisSummary?.model || 'Local worker' },
+    { label: 'Tempo', value: tempo ? `${tempo} BPM` : 'Not estimated', detail: tempoSource },
   ] : [];
 
   useEffect(() => {
@@ -219,14 +224,14 @@ export function TranscriptionLab({
   function sendToComposer() {
     if (!notes.length || !sendModuleHandoff) return;
     const melody = buildHandoffMelody();
-    sendModuleHandoff('melody', { melody, tempo, title: 'Transcribed melody' }, 'Transcription');
+    sendModuleHandoff('melody', { melody, tempo: tempo || 120, title: 'Transcribed melody' }, 'Transcription');
     navigate('/feature/composer');
   }
 
   function sendToPractice() {
     if (!notes.length || !sendModuleHandoff) return;
     const melody = buildHandoffMelody();
-    sendModuleHandoff('practice-melody', { melody, tempo, title: 'Transcribed melody' }, 'Transcription');
+    sendModuleHandoff('practice-melody', { melody, tempo: tempo || 120, title: 'Transcribed melody' }, 'Transcription');
     navigate('/feature/practice');
   }
 
@@ -241,7 +246,7 @@ export function TranscriptionLab({
         { label: 'Events', value: String(analysisSummary?.noteCount || notes.length) },
         { label: 'Confidence', value: `${Math.round((analysisSummary?.averageConfidence || 0) * 100)}%` },
         { label: 'Range', value: melodicProfile ? `${melodicProfile.range} semitones` : 'n/a' },
-        { label: 'Tempo', value: `${tempo} BPM` },
+        { label: 'Tempo', value: tempo ? `${tempo} BPM` : 'n/a' },
       ],
       snapshot: {
         notes,
@@ -267,7 +272,7 @@ export function TranscriptionLab({
     audioRef.current.src = objectUrl;
   }
 
-  async function analyzeWithService(audioBuffer, fileName = 'audio', currentTempo = 120) {
+  async function analyzeWithService(audioBuffer, fileName = 'audio', currentTempo = null) {
     const channelData = audioBuffer.numberOfChannels > 0
       ? audioBuffer.getChannelData(0).slice()
       : new Float32Array(0);
@@ -281,7 +286,7 @@ export function TranscriptionLab({
           'X-Sample-Rate': String(audioBuffer.sampleRate),
           'X-Duration': String(audioBuffer.duration),
           'X-File-Name': fileName,
-          'X-Tempo': String(currentTempo),
+          ...(Number.isFinite(currentTempo) ? { 'X-Tempo': String(currentTempo) } : {}),
         },
         body: channelData.buffer,
       });
@@ -304,18 +309,26 @@ export function TranscriptionLab({
     const audioBuffer = await audioCtxRef.current.decodeAudioData(arrayBuffer);
     bufferRef.current = audioBuffer;
     setBufferDuration(audioBuffer.duration);
+    const tempoEstimate = estimateTempo(audioBuffer.getChannelData(0), audioBuffer.sampleRate);
+    const detectedTempo = Number.isFinite(tempoEstimate.tempo) ? tempoEstimate.tempo : null;
+    setTempo(detectedTempo);
+    setTempoSource(detectedTempo ? tempoEstimate.method : 'Could not estimate reliably');
     setAnalysisProgress({ percent: 16, status: 'Drawing waveform' });
     drawWaveform(audioBuffer);
     setXmlPreview('');
     setAnalysisSummary(null);
+    setModelMidiBase64('');
+    setModelMidiFileName('transcription-model.mid');
     setPlaybackSource(playbackBlob);
 
-    const serviceResult = await analyzeWithService(audioBuffer, fileName, tempo);
+    const serviceResult = await analyzeWithService(audioBuffer, fileName, detectedTempo);
     if (serviceResult && Array.isArray(serviceResult.notes)) {
       setNotes(serviceResult.notes);
       drawPianoRoll(serviceResult.notes, serviceResult.duration || audioBuffer.duration);
       setXmlPreview(serviceResult.musicxml || '');
       setAnalysisSummary(serviceResult.summary || null);
+      setModelMidiBase64(serviceResult.midiBase64 || '');
+      setModelMidiFileName(serviceResult.midiFileName || 'transcription-model.mid');
       setAnalysisProgress({ percent: 100, status: 'Analysis complete' });
       return;
     }
@@ -593,7 +606,7 @@ export function TranscriptionLab({
     if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
     const ctx = audioCtxRef.current;
     stopScheduledNotes();
-    const q = quantizeEvents(preparePlayableMelody(notes, tempo, resolution), tempo, resolution, triplet, swing);
+    const q = quantizeEvents(preparePlayableMelody(notes, tempo || 120, resolution), tempo || 120, resolution, triplet, swing);
     if (q.length === 0) return;
     const start = ctx.currentTime + 0.2;
     q.forEach((ev) => {
@@ -637,14 +650,15 @@ export function TranscriptionLab({
   }
 
   function exportQuantizedMusicXML() {
-    const q = quantizeEvents(preparePlayableMelody(notes, tempo, 16), tempo, 16);
+    const exportTempo = tempo || 120;
+    const q = quantizeEvents(preparePlayableMelody(notes, exportTempo, 16), exportTempo, 16);
     if (!q || q.length === 0) return;
     const divisions = 480;
     const header = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.1 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">\n<score-partwise version="3.1">\n  <part-list>\n    <score-part id=\"P1\">\n      <part-name>Music</part-name>\n    </score-part>\n  </part-list>\n  <part id=\"P1\">\n    <measure number=\"1\">\n      <attributes>\n        <divisions>${divisions}</divisions>\n        <key>\n          <fifths>0</fifths>\n        </key>\n        <time>\n          <beats>4</beats>\n          <beat-type>4</beat-type>\n        </time>\n        <clef>\n          <sign>G</sign>\n          <line>2</line>\n        </clef>\n      </attributes>\n`;
     let body = '';
     q.forEach((cur) => {
       const durSeconds = cur.qDur;
-      const quarters = durSeconds * (tempo / 60);
+      const quarters = durSeconds * (exportTempo / 60);
       const durationDivs = Math.max(1, Math.round(quarters * divisions));
       if (!cur.frequency) {
         body += `      <note>\n        <rest/>\n        <duration>${durationDivs}</duration>\n      </note>\n`;
@@ -668,38 +682,21 @@ export function TranscriptionLab({
     URL.revokeObjectURL(url);
   }
 
-  // minimal MIDI export (Type 0) for quantized events
-  function exportQuantizedMIDI() {
-    const q = quantizeEvents(preparePlayableMelody(notes, tempo, resolution), tempo, resolution, triplet, swing);
-    if (!q || q.length === 0) return;
+  function exportMidiFile(sourceEvents, fileName, { quantized = false } = {}) {
+    if (!sourceEvents || sourceEvents.length === 0) return;
+    const exportTempo = tempo || 120;
     const divisions = 480;
-    // helper to write big-endian ints
     const bytes = [];
     function pushByte(b) { bytes.push(b & 0xff); }
     function pushBytes(arr) { arr.forEach((b) => pushByte(b)); }
     function pushString(s) { for (let i = 0; i < s.length; i++) pushByte(s.charCodeAt(i)); }
-    function writeVarLen(value) {
-      // variable length quantity
-      let buffer = value & 0x7f;
-      while ((value >>= 7)) {
-        buffer <<= 8;
-        buffer |= ((value & 0x7f) | 0x80);
-      }
-      // write buffer
-      while (true) {
-        pushByte(buffer & 0xff);
-        if (buffer & 0x80) buffer >>= 8; else break;
-      }
-    }
 
-    // header chunk
     pushString('MThd');
-    pushBytes([0x00,0x00,0x00,0x06]); // header length
-    pushBytes([0x00,0x00]); // format 0
-    pushBytes([0x00,0x01]); // one track
+    pushBytes([0x00,0x00,0x00,0x06]);
+    pushBytes([0x00,0x00]);
+    pushBytes([0x00,0x01]);
     pushBytes([(divisions >> 8) & 0xff, divisions & 0xff]);
 
-    // build track data
     const track = [];
     function tpush(b) { track.push(b & 0xff); }
     function tpushBytes(arr) { arr.forEach((b) => tpush(b)); }
@@ -715,30 +712,24 @@ export function TranscriptionLab({
       }
     }
 
-    // set tempo meta event
-    const microPerQuarter = Math.round((60 / tempo) * 1000000);
+    const microPerQuarter = Math.round((60 / exportTempo) * 1000000);
     tpushVarLen(0);
     tpushBytes([0xff, 0x51, 0x03, (microPerQuarter >> 16) & 0xff, (microPerQuarter >> 8) & 0xff, microPerQuarter & 0xff]);
 
-    // collect note on/off events as {tick, type, note, vel}
     const events = [];
-    q.forEach((ev) => {
+    sourceEvents.forEach((ev) => {
       if (!ev.frequency) return;
-      const midi = (() => {
-        const m = ev.note.match(/([A-G])(#?)(-?\d+)/);
-        if (!m) return 60;
-        const name = m[1];
-        const sharp = m[2] === '#';
-        const octave = Number(m[3]);
-        const base = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[name];
-        return base + (sharp ? 1 : 0) + (octave + 1) * 12;
-      })();
-      const tick = Math.round((ev.qTime) * divisions * (tempo / 60));
-      const durTicks = Math.max(1, Math.round(ev.qDur * divisions * (tempo / 60)));
-      events.push({ tick, type: 'on', note: midi, vel: 80 });
+      const midi = frequencyToMidiNumber(ev.frequency);
+      const startSeconds = quantized ? ev.qTime : Number(ev.startTime ?? ev.time ?? 0);
+      const fallbackDuration = Math.max(0.02, Number(ev.endTime ?? 0) - startSeconds) || 0.12;
+      const durationSeconds = quantized ? ev.qDur : Number(ev.duration ?? fallbackDuration);
+      const tick = Math.max(0, Math.round(startSeconds * divisions * (exportTempo / 60)));
+      const durTicks = Math.max(1, Math.round(durationSeconds * divisions * (exportTempo / 60)));
+      const velocity = Math.max(24, Math.min(127, Math.round(Number(ev.velocity ?? ((ev.confidence ?? 0.7) * 127)))));
+      events.push({ tick, type: 'on', note: midi, vel: velocity });
       events.push({ tick: tick + durTicks, type: 'off', note: midi, vel: 64 });
     });
-    events.sort((a,b) => a.tick - b.tick);
+    events.sort((a,b) => a.tick - b.tick || (a.type === 'off' ? -1 : 1));
 
     let lastTick = 0;
     events.forEach((ev) => {
@@ -756,7 +747,6 @@ export function TranscriptionLab({
     tpushVarLen(0);
     tpushBytes([0xff, 0x2f, 0x00]);
 
-    // write track chunk header
     pushString('MTrk');
     const len = track.length;
     pushBytes([(len >> 24) & 0xff, (len >> 16) & 0xff, (len >> 8) & 0xff, len & 0xff]);
@@ -767,15 +757,40 @@ export function TranscriptionLab({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'transcription-quantized.mid';
+    a.download = fileName;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  function exportRawMIDI() {
+    if (modelMidiBase64) {
+      const binary = atob(modelMidiBase64);
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index);
+      }
+      const blob = new Blob([bytes], { type: 'audio/midi' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = modelMidiFileName;
+      a.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+    exportMidiFile(notes, 'transcription-model.mid');
+  }
+
+  function exportQuantizedMIDI() {
+    const exportTempo = tempo || 120;
+    const q = quantizeEvents(preparePlayableMelody(notes, exportTempo, resolution), exportTempo, resolution, triplet, swing);
+    exportMidiFile(q, 'transcription-quantized.mid', { quantized: true });
   }
 
   function exportMusicXML() {
     if (notes.length === 0) return;
     const divisions = 480;
-    const tempo = 120;
+    const exportTempo = tempo || 120;
     const header = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.1 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">\n<score-partwise version="3.1">\n  <part-list>\n    <score-part id=\"P1\">\n      <part-name>Music</part-name>\n    </score-part>\n  </part-list>\n  <part id=\"P1\">\n    <measure number=\"1\">\n      <attributes>\n        <divisions>${divisions}</divisions>\n        <key>\n          <fifths>0</fifths>\n        </key>\n        <time>\n          <beats>4</beats>\n          <beat-type>4</beat-type>\n        </time>\n        <clef>\n          <sign>G</sign>\n          <line>2</line>\n        </clef>\n      </attributes>\n`;
 
     let body = '';
@@ -784,7 +799,7 @@ export function TranscriptionLab({
       const next = notes[i + 1];
       const dur = next ? Math.max(0.125, next.time - cur.time) : 0.5;
       // map duration to quarter lengths
-      const quarters = Math.round(dur * (tempo / 60));
+      const quarters = Math.round(dur * (exportTempo / 60));
       const durationDivs = Math.max(1, Math.round(quarters * divisions));
       if (!cur.frequency) {
         body += `      <note>\n        <rest/>\n        <duration>${durationDivs}</duration>\n      </note>\n`;
@@ -847,8 +862,19 @@ export function TranscriptionLab({
               <button className="button button--ghost" type="button" onClick={exportMusicXML} disabled={notes.length === 0}>{t('transcription.exportXml', 'Export MusicXML')}</button>
               <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <label style={{ color: 'var(--muted)' }}>{t('transcription.tempo', 'Tempo')}</label>
-                <input type="number" value={tempo} onChange={(e) => setTempo(Number(e.target.value))} style={{ width: 84 }} />
-                <label style={{ color: 'var(--muted)' }}>{t('transcription.resolution', 'Resolution')}</label>
+                <input
+                  type="number"
+                  placeholder="auto"
+                  value={tempo ?? ''}
+                  onChange={(e) => {
+                    const value = Number(e.target.value);
+                    setTempo(Number.isFinite(value) && value > 0 ? value : null);
+                    setTempoSource(e.target.value ? 'Manual override' : 'Not estimated yet');
+                  }}
+                  style={{ width: 84 }}
+                />
+                <span style={{ color: 'var(--muted)' }}>{tempoSource}</span>
+                <label style={{ color: 'var(--muted)' }}>Quantize grid</label>
                 <select value={resolution} onChange={(e) => setResolution(Number(e.target.value))}>
                   <option value={4}>Quarter</option>
                   <option value={8}>Eighth</option>
@@ -863,7 +889,8 @@ export function TranscriptionLab({
                 <strong>{Math.round(swing * 100)}%</strong>
                 <button className="button button--primary" type="button" onClick={playQuantized} disabled={notes.length === 0}>{t('transcription.playQuantized', 'Play quantized')}</button>
                 <button className="button button--ghost" type="button" onClick={exportQuantizedMusicXML} disabled={notes.length === 0}>{t('transcription.exportQuantizedXml', 'Export quantized XML')}</button>
-                <button className="button button--ghost" type="button" onClick={exportQuantizedMIDI} disabled={notes.length === 0}>{t('transcription.exportMidi', 'Export MIDI')}</button>
+                <button className="button button--primary" type="button" onClick={exportRawMIDI} disabled={notes.length === 0}>Export model MIDI</button>
+                <button className="button button--ghost" type="button" onClick={exportQuantizedMIDI} disabled={notes.length === 0}>Export quantized MIDI</button>
                 <button className="button button--ghost" type="button" onClick={sendToComposer} disabled={notes.length === 0}>
                   {t('common.openComposer', 'Open in Composer')}
                 </button>
@@ -903,6 +930,8 @@ export function TranscriptionLab({
                 <span>{`${analysisSummary.noteCount || notes.length} events`}</span>
                 <span>{`Voiced ${(Math.round((analysisSummary.voicedRatio || 0) * 100))}%`}</span>
                 <span>{`Confidence ${(Math.round((analysisSummary.averageConfidence || 0) * 100))}%`}</span>
+                {analysisSummary.model ? <span>{analysisSummary.model}</span> : null}
+                {analysisSummary.polyphonicGroups ? <span>{`Polyphony ${analysisSummary.polyphonicGroups}`}</span> : null}
                 {analysisSummary.stableNoteCount != null && analysisSummary.traceNoteCount != null ? (
                   <span>{`Stable ${analysisSummary.stableNoteCount} · Trace ${analysisSummary.traceNoteCount}${analysisSummary.hybridNoteCount ? ` · Hybrid ${analysisSummary.hybridNoteCount}` : ''}${analysisSummary.onsetNoteCount != null ? ` · Attack ${analysisSummary.onsetNoteCount}` : ''}`}</span>
                 ) : null}
