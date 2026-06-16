@@ -6,6 +6,7 @@ import tempfile
 import base64
 import shutil
 from typing import Any
+from urllib.request import urlopen
 
 import librosa
 import numpy as np
@@ -243,6 +244,125 @@ def extract_file_path(value: Any) -> str | None:
                 return found
 
     return None
+
+
+def write_bytes_to_temp_file(data: bytes, suffix: str) -> str:
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as output_file:
+        output_file.write(data)
+        return output_file.name
+
+
+def read_remote_bytes(url: str) -> bytes:
+    with urlopen(url) as response:
+        return response.read()
+
+
+def analyze_audio_replicate(y: np.ndarray, sample_rate: int, tempo: float = 120.0) -> dict[str, Any] | None:
+    provider = os.environ.get('TRANSCRIPTION_PROVIDER', '').strip().lower()
+    api_token = os.environ.get('REPLICATE_API_TOKEN', '').strip()
+    model_name = os.environ.get('REPLICATE_MODEL', 'bytedance/piano-transcription').strip()
+    audio_field = os.environ.get('REPLICATE_AUDIO_FIELD', 'audio').strip() or 'audio'
+    if provider != 'replicate' or not api_token or not model_name:
+        return None
+
+    try:
+        import replicate
+    except Exception as error:
+        app.logger.warning('Replicate client unavailable: %s', error)
+        return None
+
+    duration = float(len(y) / sample_rate) if sample_rate else 0.0
+    if duration <= 0.0:
+        return None
+
+    audio = librosa.util.normalize(y.astype(np.float32)) if np.any(y) else y.astype(np.float32)
+    audio_path = None
+    local_midi_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as audio_file:
+            audio_path = audio_file.name
+        sf.write(audio_path, audio, sample_rate)
+
+        client = replicate.Client(api_token=api_token)
+        with open(audio_path, 'rb') as audio_input:
+            result = client.run(
+                model_name,
+                input={audio_field: audio_input},
+            )
+
+        midi_bytes = None
+        if isinstance(result, str) and result.startswith('http'):
+            midi_bytes = read_remote_bytes(result)
+        elif hasattr(result, 'read'):
+            midi_bytes = result.read()
+        elif isinstance(result, dict):
+            for key in ('midi', 'output', 'file', 'url'):
+                candidate = result.get(key)
+                if isinstance(candidate, str) and candidate.startswith('http'):
+                    midi_bytes = read_remote_bytes(candidate)
+                    break
+        elif isinstance(result, (list, tuple)):
+            for item in result:
+                if isinstance(item, str) and item.startswith('http'):
+                    midi_bytes = read_remote_bytes(item)
+                    break
+                if hasattr(item, 'read'):
+                    midi_bytes = item.read()
+                    break
+
+        if not midi_bytes:
+            app.logger.warning('Replicate transcription returned no MIDI payload: %r', result)
+            return None
+
+        local_midi_path = write_bytes_to_temp_file(midi_bytes, '.mid')
+        midi_base64 = base64.b64encode(midi_bytes).decode('ascii')
+        notes, midi_duration = midi_file_to_notes(local_midi_path, duration)
+    except Exception as error:
+        app.logger.warning('Replicate transcription failed: %s', error)
+        return None
+    finally:
+        for path in (audio_path, local_midi_path):
+            if path:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+
+    if not notes:
+        return None
+
+    active_time = sum(float(note['duration']) for note in notes)
+    average_confidence = float(np.mean([note.get('confidence', 0.0) for note in notes])) if notes else 0.0
+    polyphonic_groups = 0
+    previous_start = -1.0
+    for note in notes:
+        start = float(note['startTime'])
+        if previous_start >= 0 and abs(start - previous_start) <= 0.025:
+            polyphonic_groups += 1
+        previous_start = start
+
+    return {
+        'duration': midi_duration,
+        'notes': notes,
+        'pitchContour': [{
+            'time': float(note['startTime']),
+            'frequency': float(note['frequency']),
+            'confidence': float(note.get('confidence', 0.0)),
+        } for note in notes if note.get('frequency')],
+        'summary': {
+            'voicedRatio': min(1.0, active_time / max(0.001, midi_duration)),
+            'averageConfidence': average_confidence,
+            'noteCount': len(notes),
+            'polyphonicGroups': polyphonic_groups,
+            'quality': 'hosted-model',
+            'warning': None,
+            'model': f'Replicate transcription: {model_name}',
+        },
+        'musicxml': build_musicxml(notes, float(tempo)),
+        'midiBase64': midi_base64,
+        'midiFileName': 'replicate-transcription.mid',
+        'algorithm': 'replicate',
+    }
 
 
 def analyze_audio_hosted_gradio(y: np.ndarray, sample_rate: int, tempo: float = 120.0) -> dict[str, Any] | None:
@@ -605,6 +725,10 @@ def analyze_audio(y: np.ndarray, sample_rate: int, tempo: float = 120.0) -> dict
             'algorithm': 'librosa.pyin',
         }
 
+    replicate_result = analyze_audio_replicate(y, sample_rate, tempo=tempo)
+    if replicate_result is not None:
+        return replicate_result
+
     hosted_result = analyze_audio_hosted_gradio(y, sample_rate, tempo=tempo)
     if hosted_result is not None:
         return hosted_result
@@ -781,8 +905,11 @@ def health() -> Any:
     provider = os.environ.get('TRANSCRIPTION_PROVIDER', '').strip().lower()
     space = os.environ.get('HF_TRANSCRIPTION_SPACE', '').strip()
     api_name = os.environ.get('HF_TRANSCRIPTION_API_NAME', '').strip()
+    replicate_model = os.environ.get('REPLICATE_MODEL', 'bytedance/piano-transcription').strip()
     algorithm = 'piano-model-with-basic-pitch-and-librosa-fallback'
-    if provider in {'huggingface', 'gradio', 'external'} and space and api_name:
+    if provider == 'replicate':
+        algorithm = 'replicate-with-local-fallback'
+    elif provider in {'huggingface', 'gradio', 'external'} and space and api_name:
         algorithm = 'hosted-gradio-with-local-fallback'
 
     return jsonify({
@@ -790,6 +917,7 @@ def health() -> Any:
         'service': 'transcription',
         'algorithm': algorithm,
         'hostedProvider': space or None,
+        'replicateModel': replicate_model if provider == 'replicate' else None,
     })
 
 
