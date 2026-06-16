@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocale } from '../i18n/LocaleProvider';
 import { useNavigate } from 'react-router-dom';
-
-function midiToFreq(midi) {
-  return 440 * (2 ** ((midi - 69) / 12));
-}
+import { importMidiFile } from '../utils/midiImport';
+import { playPianoNotes } from '../utils/pianoPlayback';
 
 function frequencyToMidi(freq) {
   return Math.round(69 + 12 * Math.log2(freq / 440));
@@ -82,11 +80,13 @@ export function ComposerLab({ moduleHandoff = null, sendModuleHandoff = null, cl
   const [temperature, setTemperature] = useState(0.5);
   const [melody, setMelody] = useState([]);
   const [playingIdx, setPlayingIdx] = useState(null);
-  const audioCtxRef = useRef(null);
-  const sourceRef = useRef(null);
+  const [importStatus, setImportStatus] = useState('');
+  const [playbackStatus, setPlaybackStatus] = useState('');
   const pianoRef = useRef(null);
   const midiXmlRef = useRef('');
   const importedHandoffRef = useRef(null);
+  const midiInputRef = useRef(null);
+  const playbackCleanupRef = useRef(null);
 
   useEffect(() => {
     if (moduleHandoff?.type !== 'melody' || importedHandoffRef.current === moduleHandoff.id) return;
@@ -96,6 +96,8 @@ export function ComposerLab({ moduleHandoff = null, sendModuleHandoff = null, cl
     const normalized = incoming.map((event) => ({
       midi: Number(event.midi),
       duration: Math.max(0.125, Number(event.duration || 0.5)),
+      time: Number.isFinite(Number(event.time)) ? Number(event.time) : 0,
+      velocity: Math.max(0.2, Math.min(0.95, Number(event.velocity || 0.75))),
       note: event.note || midiToNoteName(Number(event.midi)),
     }));
     setMelody(normalized);
@@ -105,17 +107,10 @@ export function ComposerLab({ moduleHandoff = null, sendModuleHandoff = null, cl
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleHandoff]);
 
-  function ensureAudioContext() {
-    if (!audioCtxRef.current) {
-      audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    return audioCtxRef.current;
-  }
-
   function generateMelody() {
     const seed = `${seedNote}${seedOctave}`;
     const startMidi = noteNameToMidi(seed);
-    const generated = [{ midi: startMidi, duration: 0.5, note: midiToNoteName(startMidi) }];
+    const generated = [{ midi: startMidi, duration: 0.5, time: 0, velocity: 0.8, note: midiToNoteName(startMidi) }];
 
     const model = STYLE_MODELS[style] || STYLE_MODELS.ambient;
     let current = startMidi;
@@ -133,7 +128,13 @@ export function ComposerLab({ moduleHandoff = null, sendModuleHandoff = null, cl
         : [[0.25, 1], [0.5, 6], [0.75, 2], [1, 2]];
       const dur = weightedSample(durationChoices, temperature);
 
-      generated.push({ midi: next, duration: dur, note: midiToNoteName(next) });
+      generated.push({
+        midi: next,
+        duration: dur,
+        time: generated.reduce((sum, event) => sum + event.duration, 0),
+        velocity: 0.75,
+        note: midiToNoteName(next),
+      });
       current = next;
     }
 
@@ -175,30 +176,50 @@ export function ComposerLab({ moduleHandoff = null, sendModuleHandoff = null, cl
     });
   }
 
-  function playMelody() {
+  async function playMelody() {
     if (melody.length === 0) return;
-    const ctx = ensureAudioContext();
-    if (ctx.state === 'suspended') ctx.resume();
+    playbackCleanupRef.current?.();
+    setPlaybackStatus('Loading piano playback...');
+    try {
+      playbackCleanupRef.current = await playPianoNotes(melody, {
+        onProgress: (elapsed) => {
+          const activeIndex = melody.findIndex((note) => elapsed >= (note.time || 0) && elapsed < ((note.time || 0) + note.duration));
+          setPlayingIdx(activeIndex >= 0 ? activeIndex : null);
+        },
+        onComplete: () => {
+          setPlayingIdx(null);
+          setPlaybackStatus('');
+          playbackCleanupRef.current = null;
+        },
+      });
+      setPlaybackStatus('Playing with sampled piano');
+    } catch (error) {
+      console.error(error);
+      setPlaybackStatus('Piano playback could not start.');
+    }
+  }
 
-    let time = ctx.currentTime + 0.1;
-    melody.forEach((ev, idx) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = midiToFreq(ev.midi);
-      gain.gain.setValueAtTime(0.08, time);
-      gain.gain.exponentialRampToValueAtTime(0.001, time + ev.duration);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(time);
-      osc.stop(time + ev.duration);
-
-      // highlight playback
-      setPlayingIdx(idx);
-      setTimeout(() => setPlayingIdx(null), ev.duration * 1000);
-
-      time += ev.duration;
-    });
+  async function handleMidiImport(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setImportStatus('Importing MIDI...');
+    try {
+      const imported = await importMidiFile(file);
+      if (!imported.melody.length) {
+        setImportStatus('No playable notes found in this MIDI file.');
+        return;
+      }
+      setMelody(imported.melody);
+      setLength(Math.min(32, Math.max(4, imported.melody.length)));
+      exportMidiXml(imported.melody);
+      setPlaybackStatus(Number.isFinite(imported.tempo) ? `Imported around ${Math.round(imported.tempo)} BPM` : 'Imported MIDI melody');
+      setImportStatus(`Imported ${imported.melody.length} notes from ${file.name}`);
+    } catch (error) {
+      console.error(error);
+      setImportStatus('Could not import that MIDI file.');
+    } finally {
+      event.target.value = '';
+    }
   }
 
   function exportMidiXml(events) {
@@ -356,6 +377,14 @@ export function ComposerLab({ moduleHandoff = null, sendModuleHandoff = null, cl
   }
   const { t } = useLocale();
 
+  useEffect(() => {
+    drawPianoRoll(melody);
+  }, [melody]);
+
+  useEffect(() => () => {
+    playbackCleanupRef.current?.();
+  }, []);
+
   return (
     <section className="composer-lab">
       <div className="composer-grid">
@@ -415,6 +444,16 @@ export function ComposerLab({ moduleHandoff = null, sendModuleHandoff = null, cl
               <button className="button button--primary" onClick={generateMelody}>
                 {t('composer.generate', 'Generate')}
               </button>
+              <button className="button button--ghost" onClick={() => midiInputRef.current?.click()}>
+                Import MIDI
+              </button>
+              <input
+                ref={midiInputRef}
+                type="file"
+                accept=".mid,.midi,audio/midi,audio/x-midi"
+                hidden
+                onChange={handleMidiImport}
+              />
               {melody.length > 0 && (
                 <>
                   <button className="button button--ghost" onClick={playMelody}>
@@ -435,6 +474,8 @@ export function ComposerLab({ moduleHandoff = null, sendModuleHandoff = null, cl
                 </>
               )}
             </div>
+            {importStatus ? <p className="practice-note">{importStatus}</p> : null}
+            {playbackStatus ? <p className="practice-note">{playbackStatus}</p> : null}
 
             {melody.length > 0 && (
               <div className="composer-info">

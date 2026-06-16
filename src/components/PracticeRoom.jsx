@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocale } from '../i18n/LocaleProvider';
+import { playPianoNotes } from '../utils/pianoPlayback';
 
 const TARGET_NOTES = [
   { name: 'A3', frequency: 220 },
@@ -107,6 +108,7 @@ export function PracticeRoom({ moduleHandoff, clearModuleHandoff }) {
   const [sessionLog, setSessionLog] = useState([]);
   const [mode, setMode] = useState('mic');
   const [error, setError] = useState('');
+  const [playbackStatus, setPlaybackStatus] = useState('');
 
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
@@ -117,6 +119,7 @@ export function PracticeRoom({ moduleHandoff, clearModuleHandoff }) {
   const demoStepRef = useRef(0);
   const lastLoggedRef = useRef(0);
   const goodHitsRef = useRef(0);
+  const importedPlaybackCleanupRef = useRef(null);
 
   const importedTargets = useMemo(
     () => importedPractice?.melody.map((note) => ({ ...midiToTarget(note.midi), duration: note.duration })) || [],
@@ -150,6 +153,7 @@ export function PracticeRoom({ moduleHandoff, clearModuleHandoff }) {
 
   useEffect(() => {
     return () => {
+      importedPlaybackCleanupRef.current?.();
       stopSession();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -162,6 +166,8 @@ export function PracticeRoom({ moduleHandoff, clearModuleHandoff }) {
       .map((note) => ({
         midi: Number(note.midi),
         duration: Math.max(0.125, Number(note.duration || 0.5)),
+        time: Number.isFinite(Number(note.time)) ? Number(note.time) : 0,
+        velocity: Math.max(0.2, Math.min(0.95, Number(note.velocity || 0.75))),
       }));
     if (melody.length) {
       setImportedPractice({
@@ -173,6 +179,7 @@ export function PracticeRoom({ moduleHandoff, clearModuleHandoff }) {
       setSequenceIndex(0);
       setScore(0);
       setSessionLog([]);
+      setPlaybackStatus('');
       goodHitsRef.current = 0;
     }
     clearModuleHandoff?.();
@@ -217,6 +224,34 @@ export function PracticeRoom({ moduleHandoff, clearModuleHandoff }) {
     stopAnimation();
     cleanupAudioNodes();
     setStatus('Idle');
+  }
+
+  async function playImportedMelody(startIndex = 0) {
+    if (!importedPractice?.melody?.length) return;
+    importedPlaybackCleanupRef.current?.();
+    const startTime = importedPractice.melody[startIndex]?.time || 0;
+    const slice = importedPractice.melody.slice(startIndex).map((note) => ({
+      ...note,
+      time: Math.max(0, Number(note.time || 0) - startTime),
+    }));
+    setPlaybackStatus(startIndex > 0 ? `Previewing from note ${startIndex + 1}` : 'Previewing imported melody');
+    try {
+      importedPlaybackCleanupRef.current = await playPianoNotes(slice, {
+        onProgress: (elapsed) => {
+          const activeOffset = slice.findIndex((note) => elapsed >= (note.time || 0) && elapsed < ((note.time || 0) + note.duration));
+          if (activeOffset >= 0) {
+            setSequenceIndex(startIndex + activeOffset);
+          }
+        },
+        onComplete: () => {
+          importedPlaybackCleanupRef.current = null;
+          setPlaybackStatus('');
+        },
+      });
+    } catch (playbackError) {
+      console.error(playbackError);
+      setPlaybackStatus('Preview playback could not start.');
+    }
   }
 
   function recordPitch(frequency) {
@@ -402,13 +437,29 @@ export function PracticeRoom({ moduleHandoff, clearModuleHandoff }) {
                 <button type="button" className="button button--ghost" onClick={() => setSequenceIndex((index) => Math.min(importedTargets.length - 1, index + 1))} disabled={sequenceIndex === importedTargets.length - 1}>
                   Next
                 </button>
+                <button type="button" className="button button--ghost" onClick={() => playImportedMelody(sequenceIndex)}>
+                  Play from here
+                </button>
+                <button type="button" className="button button--ghost" onClick={() => playImportedMelody(0)}>
+                  Play full phrase
+                </button>
                 <button type="button" className="button button--ghost" onClick={() => setSequenceIndex(0)}>
                   Restart
                 </button>
-                <button type="button" className="button button--ghost" onClick={() => setImportedPractice(null)}>
+                <button
+                  type="button"
+                  className="button button--ghost"
+                  onClick={() => {
+                    importedPlaybackCleanupRef.current?.();
+                    importedPlaybackCleanupRef.current = null;
+                    setPlaybackStatus('');
+                    setImportedPractice(null);
+                  }}
+                >
                   Close melody
                 </button>
               </div>
+              {playbackStatus ? <p className="practice-note">{playbackStatus}</p> : null}
             </div>
           ) : null}
 
