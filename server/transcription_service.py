@@ -4,6 +4,7 @@ import math
 import os
 import tempfile
 import base64
+import shutil
 from typing import Any
 
 import librosa
@@ -152,6 +153,185 @@ def build_musicxml(notes: list[dict[str, Any]], tempo: float) -> str:
         xml_declaration=True,
         pretty_print=True,
     ).decode('utf-8')
+
+
+def midi_file_to_notes(midi_path: str, fallback_duration: float) -> tuple[list[dict[str, Any]], float]:
+    from mido import MidiFile
+
+    midi_file = MidiFile(midi_path)
+    ticks_per_beat = midi_file.ticks_per_beat or 480
+    active_notes: dict[tuple[int, int], list[tuple[float, int]]] = {}
+    notes: list[dict[str, Any]] = []
+    max_time = 0.0
+
+    for track in midi_file.tracks:
+        tempo_us = 500000
+        absolute_seconds = 0.0
+        for message in track:
+            absolute_seconds += float(message.time) * (tempo_us / 1000000.0) / ticks_per_beat
+            max_time = max(max_time, absolute_seconds)
+            if message.type == 'set_tempo':
+                tempo_us = int(message.tempo)
+                continue
+
+            channel = int(getattr(message, 'channel', 0))
+            note_number = int(getattr(message, 'note', 0))
+            velocity = int(getattr(message, 'velocity', 0))
+            key = (channel, note_number)
+
+            if message.type == 'note_on' and velocity > 0:
+                active_notes.setdefault(key, []).append((absolute_seconds, velocity))
+            elif message.type in {'note_off', 'note_on'}:
+                starts = active_notes.get(key)
+                if not starts:
+                    continue
+                start_time, start_velocity = starts.pop(0)
+                end_time = max(start_time + 0.02, absolute_seconds)
+                frequency = midi_to_frequency(note_number)
+                confidence = float(max(0.0, min(1.0, start_velocity / 127.0)))
+                notes.append({
+                    'time': start_time,
+                    'startTime': start_time,
+                    'endTime': end_time,
+                    'duration': end_time - start_time,
+                    'frequency': frequency,
+                    'note': frequency_to_note_name(frequency),
+                    'kind': 'note',
+                    'confidence': confidence,
+                    'velocity': start_velocity,
+                })
+
+    for (channel, note_number), starts in active_notes.items():
+        del channel
+        for start_time, start_velocity in starts:
+            end_time = max(start_time + 0.08, max_time or fallback_duration)
+            frequency = midi_to_frequency(note_number)
+            notes.append({
+                'time': start_time,
+                'startTime': start_time,
+                'endTime': end_time,
+                'duration': end_time - start_time,
+                'frequency': frequency,
+                'note': frequency_to_note_name(frequency),
+                'kind': 'note',
+                'confidence': float(max(0.0, min(1.0, start_velocity / 127.0))),
+                'velocity': start_velocity,
+            })
+
+    notes.sort(key=lambda note: (float(note['startTime']), float(note.get('frequency') or 0.0)))
+    return notes, max(max_time, fallback_duration)
+
+
+def extract_file_path(value: Any) -> str | None:
+    if isinstance(value, str) and os.path.exists(value):
+        return value
+
+    if isinstance(value, dict):
+        for key in ('path', 'name', 'orig_name'):
+            candidate = value.get(key)
+            if isinstance(candidate, str) and os.path.exists(candidate):
+                return candidate
+        for nested in value.values():
+            found = extract_file_path(nested)
+            if found:
+                return found
+
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            found = extract_file_path(item)
+            if found:
+                return found
+
+    return None
+
+
+def analyze_audio_hosted_gradio(y: np.ndarray, sample_rate: int, tempo: float = 120.0) -> dict[str, Any] | None:
+    provider = os.environ.get('TRANSCRIPTION_PROVIDER', '').strip().lower()
+    space = os.environ.get('HF_TRANSCRIPTION_SPACE', '').strip()
+    api_name = os.environ.get('HF_TRANSCRIPTION_API_NAME', '').strip()
+    if provider not in {'huggingface', 'gradio', 'external'} or not space or not api_name:
+        return None
+
+    try:
+        from gradio_client import Client, handle_file
+    except Exception as error:
+        app.logger.warning('Hosted transcription client unavailable: %s', error)
+        return None
+
+    duration = float(len(y) / sample_rate) if sample_rate else 0.0
+    if duration <= 0.0:
+        return None
+
+    audio = librosa.util.normalize(y.astype(np.float32)) if np.any(y) else y.astype(np.float32)
+    audio_path = None
+    local_midi_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as audio_file:
+            audio_path = audio_file.name
+        sf.write(audio_path, audio, sample_rate)
+
+        token = os.environ.get('HF_TOKEN') or None
+        client = Client(space, hf_token=token)
+        result = client.predict(handle_file(audio_path), api_name=api_name)
+        midi_path = extract_file_path(result)
+        if not midi_path:
+            app.logger.warning('Hosted transcription returned no local MIDI file: %r', result)
+            return None
+
+        with tempfile.NamedTemporaryFile(suffix='.mid', delete=False) as midi_file:
+            local_midi_path = midi_file.name
+        shutil.copyfile(midi_path, local_midi_path)
+
+        with open(local_midi_path, 'rb') as midi_file:
+            midi_base64 = base64.b64encode(midi_file.read()).decode('ascii')
+
+        notes, midi_duration = midi_file_to_notes(local_midi_path, duration)
+    except Exception as error:
+        app.logger.warning('Hosted transcription failed: %s', error)
+        return None
+    finally:
+        for path in (audio_path, local_midi_path):
+            if path:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+
+    if not notes:
+        return None
+
+    active_time = sum(float(note['duration']) for note in notes)
+    average_confidence = float(np.mean([note.get('confidence', 0.0) for note in notes])) if notes else 0.0
+    polyphonic_groups = 0
+    previous_start = -1.0
+    for note in notes:
+        start = float(note['startTime'])
+        if previous_start >= 0 and abs(start - previous_start) <= 0.025:
+            polyphonic_groups += 1
+        previous_start = start
+
+    return {
+        'duration': midi_duration,
+        'notes': notes,
+        'pitchContour': [{
+            'time': float(note['startTime']),
+            'frequency': float(note['frequency']),
+            'confidence': float(note.get('confidence', 0.0)),
+        } for note in notes if note.get('frequency')],
+        'summary': {
+            'voicedRatio': min(1.0, active_time / max(0.001, midi_duration)),
+            'averageConfidence': average_confidence,
+            'noteCount': len(notes),
+            'polyphonicGroups': polyphonic_groups,
+            'quality': 'hosted-model',
+            'warning': None,
+            'model': f'Hosted transcription: {space}',
+        },
+        'musicxml': build_musicxml(notes, float(tempo)),
+        'midiBase64': midi_base64,
+        'midiFileName': 'hosted-transcription.mid',
+        'algorithm': 'hosted-gradio',
+    }
 
 
 def analyze_audio_piano_model(y: np.ndarray, sample_rate: int, tempo: float = 120.0) -> dict[str, Any] | None:
@@ -425,6 +605,10 @@ def analyze_audio(y: np.ndarray, sample_rate: int, tempo: float = 120.0) -> dict
             'algorithm': 'librosa.pyin',
         }
 
+    hosted_result = analyze_audio_hosted_gradio(y, sample_rate, tempo=tempo)
+    if hosted_result is not None:
+        return hosted_result
+
     if os.environ.get('TRANSCRIPTION_MODEL', 'piano').strip().lower() in {'piano', 'auto'}:
         piano_result = analyze_audio_piano_model(y, sample_rate, tempo=tempo)
         if piano_result is not None:
@@ -594,10 +778,18 @@ def analyze_audio(y: np.ndarray, sample_rate: int, tempo: float = 120.0) -> dict
 
 @app.get('/api/health')
 def health() -> Any:
+    provider = os.environ.get('TRANSCRIPTION_PROVIDER', '').strip().lower()
+    space = os.environ.get('HF_TRANSCRIPTION_SPACE', '').strip()
+    api_name = os.environ.get('HF_TRANSCRIPTION_API_NAME', '').strip()
+    algorithm = 'piano-model-with-basic-pitch-and-librosa-fallback'
+    if provider in {'huggingface', 'gradio', 'external'} and space and api_name:
+        algorithm = 'hosted-gradio-with-local-fallback'
+
     return jsonify({
         'ok': True,
         'service': 'transcription',
-        'algorithm': 'piano-model-with-basic-pitch-and-librosa-fallback',
+        'algorithm': algorithm,
+        'hostedProvider': space or None,
     })
 
 
