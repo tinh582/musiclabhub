@@ -17,7 +17,21 @@ describe('transcription responsiveness and stability', () => {
   it('segments fallback events by stable quantized pitch', () => {
     expect(worker).toContain('frequencyToMidi');
     expect(worker).toContain('YIN({ sampleRate');
-    expect(worker).toContain('agreement >= 0.5');
-    expect(worker).toContain('duration >= 0.1');
+    expect(worker).toContain('agreement >= 0.4');
+    expect(worker).toContain('duration >= 0.055');
+    expect(worker).toContain('rmsFloor');
+    expect(worker).toContain('mergedEvents');
+    expect(worker).toContain('contourEvents');
+    expect(worker).toContain('buildOnsetEvents');
+    expect(worker).toContain('fillTraceGaps');
+    expect(worker).toContain('useOnsetFallback');
+    expect(worker).toContain('useContourFallback');
+  });
+
+  it('shows real analysis progress from the worker', () => {
+    expect(lab).toContain('analysisProgress');
+    expect(lab).toContain('progress={analysisProgress?.percent');
+    expect(worker).toContain("status: 'progress'");
+    expect(worker).toContain('Tracking pitch frame by frame');
   });
 });

@@ -79,6 +79,34 @@
   font-size: 0.84rem;
 }
 
+.ai-stream__progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 10px;
+}
+
+.ai-stream__progress-track {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ai-stream__progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--teal), var(--blue));
+  transition: width 180ms ease;
+}
+
+.ai-stream__progress strong {
+  color: #ffffff;
+  font-size: 0.84rem;
+  text-align: right;
+}
+
 .ai-stream__pulse {
   width: 9px;
   height: 9px;

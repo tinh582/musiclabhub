@@ -47,6 +47,19 @@ function frequencyToNoteName(frequency) {
   return `${noteName}${octave}`;
 }
 
+function frequencyToMidiNumber(frequency) {
+  return Math.round(69 + 12 * Math.log2(frequency / 440));
+}
+
+function midiToFrequency(midi) {
+  return 440 * (2 ** ((midi - 69) / 12));
+}
+
+function midiToNoteName(midi) {
+  const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  return `${noteNames[((midi % 12) + 12) % 12]}${Math.floor(midi / 12) - 1}`;
+}
+
 function inferMelodicProfile(notes) {
   const pitched = notes.filter((note) => note.frequency && note.kind !== 'rest');
   if (!pitched.length) return null;
@@ -97,6 +110,7 @@ export function TranscriptionLab({
   const [bufferDuration, setBufferDuration] = useState(0);
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [xmlPreview, setXmlPreview] = useState('');
   const [analysisSummary, setAnalysisSummary] = useState(null);
@@ -129,7 +143,7 @@ export function TranscriptionLab({
       if (data.status === 'done') {
         const events = data.events.map((it) => {
           const startTime = Number(it.time || 0);
-          const duration = Math.max(0.16, Number(it.duration || 0.2));
+          const duration = Math.max(0.06, Number(it.duration || 0.2));
           return {
             time: startTime,
             startTime,
@@ -145,9 +159,16 @@ export function TranscriptionLab({
         setAnalysisSummary(data.summary || null);
         drawPianoRoll(events, data.duration);
         workerPendingRef.current = false;
+        setAnalysisProgress({ percent: 100, status: 'Analysis complete' });
         setLoading(false);
+      } else if (data.status === 'progress') {
+        setAnalysisProgress({
+          percent: Math.max(0, Math.min(99, Number(data.progress || 0) * 100)),
+          status: data.label || 'Tracking pitch',
+        });
       } else if (data.status === 'error') {
         workerPendingRef.current = false;
+        setAnalysisProgress(null);
         setLoading(false);
       }
     };
@@ -252,6 +273,7 @@ export function TranscriptionLab({
       : new Float32Array(0);
 
     try {
+      setAnalysisProgress({ percent: 28, status: 'Checking analysis service' });
       const response = await fetch(`${API_BASE}/api/transcription/analyze`, {
         method: 'POST',
         headers: {
@@ -268,6 +290,7 @@ export function TranscriptionLab({
         throw new Error(await response.text());
       }
 
+      setAnalysisProgress({ percent: 82, status: 'Reading model output' });
       return response.json();
     } catch (error) {
       console.warn('Transcription service unavailable, falling back to local worker.', error);
@@ -276,10 +299,12 @@ export function TranscriptionLab({
   }
 
   async function processArrayBuffer(arrayBuffer, fileName = 'audio', playbackBlob = null) {
+    setAnalysisProgress({ percent: 4, status: 'Decoding audio' });
     if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
     const audioBuffer = await audioCtxRef.current.decodeAudioData(arrayBuffer);
     bufferRef.current = audioBuffer;
     setBufferDuration(audioBuffer.duration);
+    setAnalysisProgress({ percent: 16, status: 'Drawing waveform' });
     drawWaveform(audioBuffer);
     setXmlPreview('');
     setAnalysisSummary(null);
@@ -291,10 +316,12 @@ export function TranscriptionLab({
       drawPianoRoll(serviceResult.notes, serviceResult.duration || audioBuffer.duration);
       setXmlPreview(serviceResult.musicxml || '');
       setAnalysisSummary(serviceResult.summary || null);
+      setAnalysisProgress({ percent: 100, status: 'Analysis complete' });
       return;
     }
 
     // send channel data to worker for fallback detection
+    setAnalysisProgress({ percent: 22, status: 'Starting local pitch scan' });
     const channelData = audioBuffer.getChannelData(0).slice();
     workerPendingRef.current = true;
     workerRef.current.postMessage({ cmd: 'detect', audioBuffer: channelData.buffer, sampleRate: audioBuffer.sampleRate }, [channelData.buffer]);
@@ -499,6 +526,61 @@ export function TranscriptionLab({
     return q;
   }
 
+  function preparePlayableMelody(events, tempoBPM, resolutionInput = 16) {
+    if (!events?.length) return [];
+    const minDuration = Math.max(0.045, (60 / tempoBPM) / Math.max(8, resolutionInput * 0.75));
+    const sorted = events
+      .filter((event) => event.frequency && Number(event.confidence ?? 1) >= 0.32)
+      .sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    const deOctaved = [];
+
+    for (const event of sorted) {
+      let midi = frequencyToMidiNumber(event.frequency);
+      if (deOctaved.length) {
+        const previousMidi = deOctaved[deOctaved.length - 1].midi;
+        let best = midi;
+        for (let shift = -24; shift <= 24; shift += 12) {
+          const candidate = midi + shift;
+          if (Math.abs(candidate - previousMidi) < Math.abs(best - previousMidi)) best = candidate;
+        }
+        if (Math.abs(best - previousMidi) <= 12) midi = best;
+      }
+      deOctaved.push({ ...event, midi });
+    }
+
+    const cleaned = [];
+    for (const event of deOctaved) {
+      const time = Number(event.time || event.startTime || 0);
+      const duration = Math.max(0.035, Number(event.duration || 0.12));
+      const previous = cleaned[cleaned.length - 1];
+      const gap = previous ? time - (previous.time + previous.duration) : Infinity;
+      if (previous && Math.abs(previous.midi - event.midi) <= 1 && gap >= -0.03 && gap <= 0.18) {
+        const end = Math.max(previous.time + previous.duration, time + duration);
+        previous.duration = end - previous.time;
+        previous.midi = Math.round((previous.midi + event.midi) / 2);
+        previous.frequency = midiToFrequency(previous.midi);
+        previous.note = midiToNoteName(previous.midi);
+        previous.confidence = Math.max(previous.confidence || 0, event.confidence || 0);
+        continue;
+      }
+      if (duration < minDuration && previous && Math.abs(previous.midi - event.midi) <= 2) {
+        previous.duration = Math.max(previous.duration, (time + duration) - previous.time);
+        continue;
+      }
+      cleaned.push({
+        ...event,
+        time,
+        startTime: time,
+        duration,
+        endTime: time + duration,
+        frequency: midiToFrequency(event.midi),
+        note: midiToNoteName(event.midi),
+      });
+    }
+
+    return cleaned.filter((event) => event.duration >= minDuration || Number(event.confidence || 0) >= 0.58);
+  }
+
   function stopScheduledNotes() {
     scheduledRef.current.forEach((n) => {
       try { n.osc.stop(); } catch (e) {}
@@ -511,7 +593,7 @@ export function TranscriptionLab({
     if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
     const ctx = audioCtxRef.current;
     stopScheduledNotes();
-    const q = quantizeEvents(notes, tempo, resolution, triplet, swing);
+    const q = quantizeEvents(preparePlayableMelody(notes, tempo, resolution), tempo, resolution, triplet, swing);
     if (q.length === 0) return;
     const start = ctx.currentTime + 0.2;
     q.forEach((ev) => {
@@ -520,11 +602,14 @@ export function TranscriptionLab({
       const gain = ctx.createGain();
       osc.type = 'sine';
       osc.frequency.value = ev.frequency;
-      gain.gain.value = 0.06;
-      osc.connect(gain);
-      gain.connect(ctx.destination);
       const s = start + ev.qTime;
       const e = s + ev.qDur;
+      gain.gain.setValueAtTime(0.0001, s);
+      gain.gain.exponentialRampToValueAtTime(0.065, s + 0.012);
+      gain.gain.setValueAtTime(0.065, Math.max(s + 0.014, e - 0.035));
+      gain.gain.exponentialRampToValueAtTime(0.0001, e);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
       osc.start(s);
       osc.stop(e);
       scheduledRef.current.push({ osc, s, e });
@@ -552,7 +637,7 @@ export function TranscriptionLab({
   }
 
   function exportQuantizedMusicXML() {
-    const q = quantizeEvents(notes, tempo, 16);
+    const q = quantizeEvents(preparePlayableMelody(notes, tempo, 16), tempo, 16);
     if (!q || q.length === 0) return;
     const divisions = 480;
     const header = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.1 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">\n<score-partwise version="3.1">\n  <part-list>\n    <score-part id=\"P1\">\n      <part-name>Music</part-name>\n    </score-part>\n  </part-list>\n  <part id=\"P1\">\n    <measure number=\"1\">\n      <attributes>\n        <divisions>${divisions}</divisions>\n        <key>\n          <fifths>0</fifths>\n        </key>\n        <time>\n          <beats>4</beats>\n          <beat-type>4</beat-type>\n        </time>\n        <clef>\n          <sign>G</sign>\n          <line>2</line>\n        </clef>\n      </attributes>\n`;
@@ -585,7 +670,7 @@ export function TranscriptionLab({
 
   // minimal MIDI export (Type 0) for quantized events
   function exportQuantizedMIDI() {
-    const q = quantizeEvents(notes, tempo, resolution, triplet, swing);
+    const q = quantizeEvents(preparePlayableMelody(notes, tempo, resolution), tempo, resolution, triplet, swing);
     if (!q || q.length === 0) return;
     const divisions = 480;
     // helper to write big-endian ints
@@ -796,6 +881,8 @@ export function TranscriptionLab({
             active={loading}
             title="Listening for notes and musical structure"
             model="librosa pYIN service with local pitch-worker fallback"
+            progress={analysisProgress?.percent ?? null}
+            status={analysisProgress?.status || ''}
             steps={[
               'Decode audio and build the waveform',
               'Estimate tempo and rhythmic pulse',
@@ -816,6 +903,9 @@ export function TranscriptionLab({
                 <span>{`${analysisSummary.noteCount || notes.length} events`}</span>
                 <span>{`Voiced ${(Math.round((analysisSummary.voicedRatio || 0) * 100))}%`}</span>
                 <span>{`Confidence ${(Math.round((analysisSummary.averageConfidence || 0) * 100))}%`}</span>
+                {analysisSummary.stableNoteCount != null && analysisSummary.traceNoteCount != null ? (
+                  <span>{`Stable ${analysisSummary.stableNoteCount} · Trace ${analysisSummary.traceNoteCount}${analysisSummary.hybridNoteCount ? ` · Hybrid ${analysisSummary.hybridNoteCount}` : ''}${analysisSummary.onsetNoteCount != null ? ` · Attack ${analysisSummary.onsetNoteCount}` : ''}`}</span>
+                ) : null}
               </div>
             ) : null}
             {melodicProfile ? (

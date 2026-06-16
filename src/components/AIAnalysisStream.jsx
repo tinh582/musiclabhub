@@ -7,6 +7,8 @@ export function AIAnalysisStream({
   steps = [],
   findings = [],
   model = 'Local audio intelligence',
+  progress = null,
+  status = '',
 }) {
   const { t } = useLocale();
   const [visibleStep, setVisibleStep] = useState(active ? 0 : steps.length);
@@ -33,7 +35,7 @@ export function AIAnalysisStream({
           <h4>{title}</h4>
         </div>
         <span role="status" aria-live="polite">
-          {active ? t('ai.status.active', 'Analyzing now') : t('ai.status.complete', 'Analysis complete')}
+          {active ? status || t('ai.status.active', 'Analyzing now') : t('ai.status.complete', 'Analysis complete')}
         </span>
       </div>
 
@@ -41,6 +43,15 @@ export function AIAnalysisStream({
         <span className="ai-stream__pulse" aria-hidden="true" />
         <span>{model}</span>
       </div>
+
+      {active && Number.isFinite(progress) ? (
+        <div className="ai-stream__progress" aria-label={`Analysis progress ${Math.round(progress)}%`}>
+          <div className="ai-stream__progress-track">
+            <span style={{ width: `${Math.max(2, Math.min(100, progress))}%` }} />
+          </div>
+          <strong>{Math.round(progress)}%</strong>
+        </div>
+      ) : null}
 
       <ol className="ai-stream__steps">
         {steps.map((step, index) => {
