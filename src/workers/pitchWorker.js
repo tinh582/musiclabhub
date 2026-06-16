@@ -102,6 +102,85 @@ function fillTraceGaps(traceEvents, onsetEvents, durationSeconds) {
   return output.sort((a, b) => a.time - b.time);
 }
 
+function mergeCoverageEvents(eventGroups) {
+  const candidates = eventGroups
+    .flat()
+    .filter((event) => event && Number.isFinite(event.time) && Number.isFinite(event.duration) && event.duration > 0)
+    .sort((a, b) => a.time - b.time || b.confidence - a.confidence);
+  const output = [];
+
+  for (const event of candidates) {
+    const eventMidi = frequencyToMidi(event.frequency);
+    const duplicate = output.find((existing) => {
+      const overlapStart = Math.max(existing.time, event.time);
+      const overlapEnd = Math.min(existing.time + existing.duration, event.time + event.duration);
+      const overlap = Math.max(0, overlapEnd - overlapStart);
+      const shorter = Math.max(0.001, Math.min(existing.duration, event.duration));
+      const closePitch = Math.abs(frequencyToMidi(existing.frequency) - eventMidi) <= 1;
+      return closePitch && overlap / shorter >= 0.45;
+    });
+
+    if (duplicate) {
+      if ((event.confidence || 0) > (duplicate.confidence || 0)) {
+        duplicate.time = event.time;
+        duplicate.duration = event.duration;
+        duplicate.frequency = event.frequency;
+        duplicate.confidence = event.confidence;
+      }
+      continue;
+    }
+
+    output.push({ ...event, confidence: Math.min(0.72, (event.confidence || 0.45) + 0.04) });
+  }
+
+  return output.sort((a, b) => a.time - b.time || frequencyToMidi(a.frequency) - frequencyToMidi(b.frequency));
+}
+
+function buildCoverageEvents(frames, sampleRate, hop, durationSeconds) {
+  if (!frames.length) return [];
+  const rmsValues = frames.map((frame) => frame.rms).sort((a, b) => a - b);
+  const medianRms = rmsValues[Math.floor(rmsValues.length * 0.5)] || 0;
+  const activeRms = rmsValues[Math.floor(rmsValues.length * 0.68)] || 0;
+  const floor = Math.max(0.0012, medianRms * 0.8, activeRms * 0.16);
+  const events = [];
+  let segment = null;
+
+  function finalizeSegment(endFrame) {
+    if (!segment) return;
+    const segmentFrames = frames.slice(segment.startFrame, endFrame);
+    const midis = segmentFrames.map((frame) => frame.midi).filter((value) => value != null);
+    if (midis.length >= 2) {
+      const midi = Math.round(median(midis));
+      const agreement = midis.filter((value) => Math.abs(value - midi) <= 4).length / midis.length;
+      const startTime = frames[segment.startFrame].index / sampleRate;
+      const endTime = Math.min(durationSeconds, ((frames[Math.max(endFrame - 1, segment.startFrame)]?.index || frames[segment.startFrame].index) + hop) / sampleRate);
+      const duration = Math.max(0.05, endTime - startTime);
+      if (duration >= 0.05 && agreement >= 0.18) {
+        events.push({
+          time: startTime,
+          duration: Math.min(duration, 1.6),
+          frequency: midiToFrequency(midi),
+          confidence: Math.min(0.68, 0.22 + agreement * 0.28 + Math.min(0.12, duration * 0.08)),
+        });
+      }
+    }
+    segment = null;
+  }
+
+  for (let index = 0; index < frames.length; index += 1) {
+    const frame = frames[index];
+    const active = frame.rms >= floor;
+    if (active && !segment) {
+      segment = { startFrame: index };
+    } else if (!active && segment) {
+      finalizeSegment(index);
+    }
+  }
+  finalizeSegment(frames.length);
+
+  return events;
+}
+
 onmessage = function (e) {
   const { cmd, audioBuffer, sampleRate } = e.data;
   if (cmd === 'init') {
@@ -152,6 +231,7 @@ onmessage = function (e) {
 
       postMessage({ status: 'progress', progress: 0.86, label: 'Stabilizing note events' });
       const onsetEvents = buildOnsetEvents(frames, sampleRate, hop, data.length / sampleRate);
+      const coverageEvents = buildCoverageEvents(frames, sampleRate, hop, data.length / sampleRate);
       const contourEvents = [];
       let contour = null;
       for (const frame of frames) {
@@ -268,8 +348,30 @@ onmessage = function (e) {
         && onsetVoicedDuration > Math.max(stableVoicedDuration * 2.4, contourVoicedDuration * 1.15);
       const useContourFallback = !useOnsetFallback && stableRatio < 0.04 && contourEvents.length > mergedEvents.length;
       const hybridEvents = useContourFallback ? fillTraceGaps(contourEvents, onsetEvents, data.length / sampleRate) : [];
-      const outputEvents = useOnsetFallback ? onsetEvents : useContourFallback ? hybridEvents : mergedEvents;
-      const voicedDuration = useOnsetFallback ? onsetVoicedDuration : useContourFallback ? contourVoicedDuration : stableVoicedDuration;
+      const coverageHybridEvents = mergeCoverageEvents([
+        mergedEvents,
+        contourEvents,
+        onsetEvents.filter((event) => event.confidence >= 0.44),
+        coverageEvents,
+      ]);
+      const coverageVoicedDuration = coverageHybridEvents.reduce((sum, event) => sum + event.duration, 0);
+      const useCoverageFallback = !useOnsetFallback
+        && coverageHybridEvents.length > Math.max(mergedEvents.length * 1.6, contourEvents.length * 1.15, 24)
+        && coverageVoicedDuration > Math.max(stableVoicedDuration * 2.2, contourVoicedDuration * 1.15);
+      const outputEvents = useOnsetFallback
+        ? onsetEvents
+        : useCoverageFallback
+        ? coverageHybridEvents
+        : useContourFallback
+        ? hybridEvents
+        : mergedEvents;
+      const voicedDuration = useOnsetFallback
+        ? onsetVoicedDuration
+        : useCoverageFallback
+        ? coverageVoicedDuration
+        : useContourFallback
+        ? contourVoicedDuration
+        : stableVoicedDuration;
       postMessage({
         status: 'done',
         events: outputEvents,
@@ -283,11 +385,14 @@ onmessage = function (e) {
           stableNoteCount: mergedEvents.length,
           traceNoteCount: contourEvents.length,
           onsetNoteCount: onsetEvents.length,
-          hybridNoteCount: hybridEvents.length || undefined,
+          hybridNoteCount: (useCoverageFallback ? coverageHybridEvents.length : hybridEvents.length) || undefined,
+          coverageNoteCount: coverageEvents.length,
           quality: outputEvents.length ? 'fallback' : 'low',
           warning: outputEvents.length
             ? useOnsetFallback
               ? 'Showing piano-style attack segments because stable pitch tracking left large gaps. Treat exported notes as an editable draft.'
+              : useCoverageFallback
+              ? 'Showing a high-coverage local draft because the regular detector left too much empty space. Expect extra notes and cleanup.'
               : useContourFallback
               ? 'Showing a local melody trace with cautious gap filling. Treat exported notes as an editable draft.'
               : 'Using local pitch estimation. Mixed or polyphonic audio may contain approximate melody notes.'
