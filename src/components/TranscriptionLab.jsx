@@ -6,6 +6,39 @@ import { AIAnalysisStream } from './AIAnalysisStream';
 import { useNavigate } from 'react-router-dom';
 
 const API_BASE = resolveApiBase(import.meta.env.VITE_API_BASE, import.meta.env.PROD);
+const PIANO_SAMPLE_BASE_URL = 'https://tonejs.github.io/audio/salamander/';
+const PIANO_SAMPLE_URLS = {
+  A0: 'A0.mp3',
+  C1: 'C1.mp3',
+  'D#1': 'Ds1.mp3',
+  'F#1': 'Fs1.mp3',
+  A1: 'A1.mp3',
+  C2: 'C2.mp3',
+  'D#2': 'Ds2.mp3',
+  'F#2': 'Fs2.mp3',
+  A2: 'A2.mp3',
+  C3: 'C3.mp3',
+  'D#3': 'Ds3.mp3',
+  'F#3': 'Fs3.mp3',
+  A3: 'A3.mp3',
+  C4: 'C4.mp3',
+  'D#4': 'Ds4.mp3',
+  'F#4': 'Fs4.mp3',
+  A4: 'A4.mp3',
+  C5: 'C5.mp3',
+  'D#5': 'Ds5.mp3',
+  'F#5': 'Fs5.mp3',
+  A5: 'A5.mp3',
+  C6: 'C6.mp3',
+  'D#6': 'Ds6.mp3',
+  'F#6': 'Fs6.mp3',
+  A6: 'A6.mp3',
+  C7: 'C7.mp3',
+  'D#7': 'Ds7.mp3',
+  'F#7': 'Fs7.mp3',
+  A7: 'A7.mp3',
+  C8: 'C8.mp3',
+};
 
 function autoCorrelate(buffer, sampleRate) {
   const size = buffer.length;
@@ -125,6 +158,10 @@ export function TranscriptionLab({
   const scheduledRef = useRef([]);
   const playbackStartRef = useRef(null);
   const animationRef = useRef(null);
+  const playbackTimeoutRef = useRef(null);
+  const toneModuleRef = useRef(null);
+  const pianoSamplerRef = useRef(null);
+  const pianoLoadingRef = useRef(null);
   const workspaceLoadedRef = useRef('');
   const workerPendingRef = useRef(false);
 
@@ -185,6 +222,10 @@ export function TranscriptionLab({
       if (audioUrlRef.current) {
         URL.revokeObjectURL(audioUrlRef.current);
         audioUrlRef.current = null;
+      }
+      if (playbackTimeoutRef.current) {
+        clearTimeout(playbackTimeoutRef.current);
+        playbackTimeoutRef.current = null;
       }
     };
   }, []);
@@ -595,58 +636,94 @@ export function TranscriptionLab({
   }
 
   function stopScheduledNotes() {
-    scheduledRef.current.forEach((n) => {
-      try { n.osc.stop(); } catch (e) {}
-      try { n.osc.disconnect(); } catch (e) {}
+    scheduledRef.current.forEach((note) => {
+      try {
+        note.cancel?.();
+      } catch (error) {
+        console.warn('Could not cancel scheduled note.', error);
+      }
     });
     scheduledRef.current = [];
+    if (playbackTimeoutRef.current) {
+      clearTimeout(playbackTimeoutRef.current);
+      playbackTimeoutRef.current = null;
+    }
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
+    playbackStartRef.current = null;
   }
 
-  function playQuantized() {
-    if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-    const ctx = audioCtxRef.current;
+  async function ensurePianoSampler() {
+    if (pianoSamplerRef.current && pianoSamplerRef.current.loaded) return pianoSamplerRef.current;
+    if (pianoLoadingRef.current) return pianoLoadingRef.current;
+
+    pianoLoadingRef.current = (async () => {
+      const toneModule = toneModuleRef.current || await import('tone');
+      toneModuleRef.current = toneModule;
+      await toneModule.start();
+
+      if (!pianoSamplerRef.current) {
+        pianoSamplerRef.current = new toneModule.Sampler({
+          urls: PIANO_SAMPLE_URLS,
+          release: 1.3,
+          baseUrl: PIANO_SAMPLE_BASE_URL,
+          volume: -7,
+        }).toDestination();
+      }
+
+      await toneModule.loaded();
+      return pianoSamplerRef.current;
+    })();
+
+    try {
+      return await pianoLoadingRef.current;
+    } finally {
+      pianoLoadingRef.current = null;
+    }
+  }
+
+  async function playQuantized() {
     stopScheduledNotes();
     const q = quantizeEvents(preparePlayableMelody(notes, tempo || 120, resolution), tempo || 120, resolution, triplet, swing);
     if (q.length === 0) return;
-    const start = ctx.currentTime + 0.2;
+
+    const toneModule = toneModuleRef.current || await import('tone');
+    toneModuleRef.current = toneModule;
+    const sampler = await ensurePianoSampler();
+    const start = toneModule.now() + 0.12;
+
     q.forEach((ev) => {
       if (!ev.frequency) return;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = ev.frequency;
-      const s = start + ev.qTime;
-      const e = s + ev.qDur;
-      gain.gain.setValueAtTime(0.0001, s);
-      gain.gain.exponentialRampToValueAtTime(0.065, s + 0.012);
-      gain.gain.setValueAtTime(0.065, Math.max(s + 0.014, e - 0.035));
-      gain.gain.exponentialRampToValueAtTime(0.0001, e);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(s);
-      osc.stop(e);
-      scheduledRef.current.push({ osc, s, e });
+      const midi = frequencyToMidiNumber(ev.frequency);
+      const noteName = midiToNoteName(midi);
+      const velocity = Math.max(0.2, Math.min(0.95, Number(ev.confidence || 0.7)));
+      const scheduledTime = start + ev.qTime;
+      const scheduledDuration = Math.max(0.08, ev.qDur);
+      sampler.triggerAttackRelease(noteName, scheduledDuration, scheduledTime, velocity);
     });
-    // set playing state until last note ends
+    scheduledRef.current.push({
+      cancel: () => sampler.releaseAll?.(toneModule.now()),
+    });
+
     const last = q[q.length - 1];
     setPlaying(true);
     const stopAt = start + last.qTime + last.qDur + 0.1;
     playbackStartRef.current = { start, duration: Math.max(stopAt - start, 0.1), q };
-    // animation loop to update cursor
     function frame() {
-      const now = ctx.currentTime - start;
+      const now = toneModule.now() - start;
       drawPianoRoll(q, playbackStartRef.current.duration, now);
       if (now < playbackStartRef.current.duration) {
         animationRef.current = requestAnimationFrame(frame);
       }
     }
     animationRef.current = requestAnimationFrame(frame);
-    setTimeout(() => {
+
+    playbackTimeoutRef.current = setTimeout(() => {
       stopScheduledNotes();
       setPlaying(false);
-      playbackStartRef.current = null;
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    }, (stopAt - ctx.currentTime) * 1000);
+    }, Math.max(0, stopAt - toneModule.now()) * 1000);
   }
 
   function exportQuantizedMusicXML() {
