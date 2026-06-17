@@ -4,6 +4,7 @@ import { useLocale } from '../i18n/LocaleProvider';
 import { useAudioFeatures } from '../hooks/useAudioFeatures';
 import { equalPowerMix, processingHeadroom, PROCESSING_QUALITY, qualityConfig } from '../utils/audioProcessing';
 import { AIAnalysisStream } from './AIAnalysisStream';
+import { isLowPowerDevice } from '../utils/performanceMode';
 
 export function EffectsLab({
   workspaceAudio = null,
@@ -14,8 +15,9 @@ export function EffectsLab({
   setModuleState = null,
 }) {
   const { t } = useLocale();
+  const lowPowerMode = isLowPowerDevice();
   const localizedCatalog = buildCatalog(t);
-  const [fileUrl, setFileUrl] = useState((localizedCatalog && localizedCatalog[0] && localizedCatalog[0].audioUrl) || '/audio/sample1.mp3');
+  const [fileUrl, setFileUrl] = useState(lowPowerMode ? '' : ((localizedCatalog && localizedCatalog[0] && localizedCatalog[0].audioUrl) || '/audio/sample1.mp3'));
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [wet, setWet] = useState(0.5);
@@ -29,7 +31,8 @@ export function EffectsLab({
   const [downloadUrl, setDownloadUrl] = useState(null);
   const [audioError, setAudioError] = useState(null);
   const [audioKey, setAudioKey] = useState(0);
-  const { data: analysis, loading: analysisLoading } = useAudioFeatures(fileUrl);
+  const [analysisRequested, setAnalysisRequested] = useState(() => !lowPowerMode);
+  const { data: analysis, loading: analysisLoading } = useAudioFeatures(fileUrl, { enabled: analysisRequested && !!fileUrl });
 
   const audioRef = useRef(null);
   const ctxRef = useRef(null);
@@ -53,6 +56,7 @@ export function EffectsLab({
   useEffect(() => {
     if (!moduleState) return;
     if (moduleState.fileUrl) setFileUrl(moduleState.fileUrl);
+    if (typeof moduleState.analysisRequested === 'boolean') setAnalysisRequested(moduleState.analysisRequested);
     if (Number.isFinite(moduleState.wet)) setWet(moduleState.wet);
     if (Number.isFinite(moduleState.delayTime)) setDelayTime(moduleState.delayTime);
     if (Number.isFinite(moduleState.feedback)) setFeedback(moduleState.feedback);
@@ -173,6 +177,7 @@ export function EffectsLab({
     if (!f) return;
     const url = URL.createObjectURL(f);
     setFileUrl(url);
+    setAnalysisRequested(true);
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
@@ -188,6 +193,7 @@ export function EffectsLab({
     const t = (localizedCatalog && localizedCatalog[i]) || CATALOG[i];
     if (t && t.audioUrl) {
       setFileUrl(t.audioUrl);
+      setAnalysisRequested(true);
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
@@ -294,6 +300,7 @@ export function EffectsLab({
   useEffect(() => {
     setModuleState?.({
       fileUrl,
+      analysisRequested,
       wet,
       delayTime,
       feedback,
@@ -303,7 +310,7 @@ export function EffectsLab({
       quality,
       outputLevel,
     });
-  }, [fileUrl, wet, delayTime, feedback, cutoff, distortion, reverbSize, quality, outputLevel, setModuleState]);
+  }, [fileUrl, analysisRequested, wet, delayTime, feedback, cutoff, distortion, reverbSize, quality, outputLevel, setModuleState]);
 
   function startRecording() {
     if (!nodesRef.current || !nodesRef.current.mediaStream) return;
@@ -327,7 +334,10 @@ export function EffectsLab({
   }
 
   function applySmartSettings() {
-    if (!analysis) return;
+    if (!analysis) {
+      setAnalysisRequested(true);
+      return;
+    }
     const brightness = Math.min(1, analysis.spectralCentroid / 4500);
     const noisy = Math.min(1, analysis.spectralFlatness * 2.5);
     const compressed = Math.min(1, Math.max(0, (8 - analysis.dynamicRangeDb) / 8));
@@ -415,7 +425,7 @@ export function EffectsLab({
           {!isRecording && <button className="btn" onClick={startRecording}>Record</button>}
           {isRecording && <button className="btn" onClick={stopRecording}>Stop</button>}
           {downloadUrl && <a className="btn" href={downloadUrl} download="processed.webm">Download</a>}
-          <button className="btn" onClick={applySmartSettings} disabled={!analysis || analysisLoading}>
+          <button className="btn" onClick={applySmartSettings} disabled={analysisLoading || !fileUrl}>
             {analysisLoading ? 'Analyzing...' : 'Smart settings'}
           </button>
           <button className="btn" onClick={saveCurrentAnalysis} disabled={!analysis}>{t('common.saveAnalysis', 'Save analysis')}</button>
@@ -445,6 +455,11 @@ export function EffectsLab({
           onError={() => setAudioError('Audio failed to load. Check the sample URL or file.')} 
         />
         {audioError ? <p style={{ marginTop: 8, color: 'var(--coral)' }}>{audioError}</p> : null}
+        {lowPowerMode ? (
+          <p className="practice-note">
+            Low-power mode keeps this page lighter and only runs deeper audio analysis when you use smart settings.
+          </p>
+        ) : null}
         <AIAnalysisStream
           active={analysisLoading}
           title="Designing an intelligent effects profile"

@@ -6,6 +6,7 @@ import { formatDuration } from '../utils/audioFeatures';
 import { evaluateClassifications } from '../utils/modelEvaluation';
 import { resolveApiBase } from '../utils/apiBase';
 import { AIAnalysisStream } from './AIAnalysisStream';
+import { isLowPowerDevice } from '../utils/performanceMode';
 
 const API_BASE = resolveApiBase(import.meta.env.VITE_API_BASE, import.meta.env.PROD);
 
@@ -63,7 +64,11 @@ export function ClassificationLab({
   const [customSource, setCustomSource] = useState(null);
   const [sourceError, setSourceError] = useState('');
   const [sourceLoading, setSourceLoading] = useState(false);
+  const [analysisRequested, setAnalysisRequested] = useState(() => !isLowPowerDevice());
   const catalog = localizedCatalog || CATALOG;
+  const lowPowerMode = isLowPowerDevice();
+  const trainingEpochs = lowPowerMode ? 24 : 120;
+  const hiddenUnits = lowPowerMode ? 16 : 32;
 
   const features = useMemo(
     () => catalog.map((c) => [c.energy, c.valence, c.danceability, c.tempo / 140, c.popularity / 100, c.collaborative]),
@@ -77,7 +82,8 @@ export function ClassificationLab({
 
   const labels = useMemo(() => catalog.map((c) => genres.indexOf(c.genre)), [genres, catalog]);
   const baseSelected = useMemo(() => catalog.find((track) => track.id === selectedId) || CATALOG.find((track) => track.id === selectedId), [selectedId, catalog]);
-  const { data: audioInfo, loading: audioLoading, error: audioError } = useAudioFeatures(customSource?.audioUrl || baseSelected?.audioUrl);
+  const activeAudioUrl = analysisRequested ? (customSource?.audioUrl || baseSelected?.audioUrl) : null;
+  const { data: audioInfo, loading: audioLoading, error: audioError } = useAudioFeatures(activeAudioUrl, { enabled: analysisRequested });
   const customTrack = useMemo(() => {
     if (!customSource) return null;
     if (customSource.features) {
@@ -169,19 +175,19 @@ export function ClassificationLab({
       const ys = tf.oneHot(tf.tensor1d(labels, 'int32'), genres.length);
 
       const model = tf.sequential();
-      model.add(tf.layers.dense({ units: 32, activation: 'relu', inputShape: [features[0].length] }));
+      model.add(tf.layers.dense({ units: hiddenUnits, activation: 'relu', inputShape: [features[0].length] }));
       model.add(tf.layers.dropout({ rate: 0.2 }));
       model.add(tf.layers.dense({ units: genres.length, activation: 'softmax' }));
 
       model.compile({ optimizer: tf.train.adam(0.01), loss: 'categoricalCrossentropy', metrics: ['accuracy'] });
 
       await model.fit(xs, ys, {
-        epochs: 120,
+        epochs: trainingEpochs,
         batchSize: 4,
         callbacks: {
           onEpochEnd: async (epoch) => {
             if (!mounted) return;
-            setTrainProgress(Math.round(((epoch + 1) / 120) * 100));
+            setTrainProgress(Math.round(((epoch + 1) / trainingEpochs) * 100));
             await tf.nextFrame();
           },
         },
@@ -205,7 +211,7 @@ export function ClassificationLab({
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [usePretrained, modelUrl]);
+  }, [usePretrained, modelUrl, hiddenUnits, trainingEpochs]);
 
   async function predict(track) {
     if (!modelRef.current) return;
@@ -244,6 +250,7 @@ export function ClassificationLab({
     if (moduleState.customSource) setCustomSource(moduleState.customSource);
     if (typeof moduleState.audioUrlInput === 'string') setAudioUrlInput(moduleState.audioUrlInput);
     if (moduleState.selectedId) setSelectedId(moduleState.selectedId);
+    if (typeof moduleState.analysisRequested === 'boolean') setAnalysisRequested(moduleState.analysisRequested);
     if (Array.isArray(moduleState.probs)) setProbs(moduleState.probs);
     if (moduleState.evaluation) setEvaluation(moduleState.evaluation);
   }, [moduleState]);
@@ -256,6 +263,7 @@ export function ClassificationLab({
       artist: 'Shared workspace',
       audioUrl: workspaceAudio.url,
     });
+    setAnalysisRequested(true);
     setAudioUrlInput('');
     setSourceError('');
     setPlaying(false);
@@ -314,6 +322,7 @@ export function ClassificationLab({
       artist: 'Device upload',
       audioUrl: url,
     });
+    setAnalysisRequested(true);
     setSourceError('');
     setPlaying(false);
     event.target.value = '';
@@ -351,6 +360,7 @@ export function ClassificationLab({
             collaborative: data.collaborative ?? 0.45,
           },
         });
+        setAnalysisRequested(true);
         setPlaying(false);
       } catch (error) {
         setSourceError(error.message || 'Could not read this Spotify track.');
@@ -382,6 +392,7 @@ export function ClassificationLab({
       artist: 'External URL',
       audioUrl: trimmed,
     });
+    setAnalysisRequested(true);
     setPlaying(false);
     setSourceLoading(false);
   }
@@ -397,10 +408,11 @@ export function ClassificationLab({
       selectedId,
       audioUrlInput,
       customSource,
+      analysisRequested,
       probs,
       evaluation,
     });
-  }, [selectedId, audioUrlInput, customSource, probs, evaluation, setModuleState]);
+  }, [selectedId, audioUrlInput, customSource, analysisRequested, probs, evaluation, setModuleState]);
 
   function saveCurrentAnalysis() {
     if (!selected || !probs.length || !saveAnalysis) return;
@@ -484,7 +496,7 @@ export function ClassificationLab({
                     <input type="checkbox" checked={usePretrained} onChange={(e) => setUsePretrained(e.target.checked)} />
                     <span style={{ color: 'var(--muted)' }}>{t('class.usePretrained', 'Use pretrained model')}</span>
                   </label>
-                  {usePretrained ? (
+        {usePretrained ? (
                     <>
                       <input placeholder={t('class.modelUrl', 'Model URL (tfjs model.json)')} value={modelUrl} onChange={(e) => setModelUrl(e.target.value)} style={{ flex: 1 }} />
                       <button className="button button--primary" onClick={async () => {
@@ -511,6 +523,11 @@ export function ClassificationLab({
                     </>
                   )}
                 </div>
+                {lowPowerMode ? (
+                  <p className="practice-note">
+                    Low-power mode is using a lighter classifier and defers deep audio feature analysis until you ask for it.
+                  </p>
+                ) : null}
               </div>
             </div>
 
@@ -546,6 +563,9 @@ export function ClassificationLab({
             <div style={{ marginTop: 12 }}>
               <audio ref={audioRef} onEnded={() => setPlaying(false)} />
               <button className="button button--primary" onClick={() => playDemo(selected)}>{playing ? t('rec.stop', 'Stop') : t('class.playDemo', 'Play demo')}</button>
+              {lowPowerMode && !analysisRequested ? (
+                <button className="button button--ghost" onClick={() => setAnalysisRequested(true)}>Analyze audio details</button>
+              ) : null}
               <button className="button button--ghost" onClick={saveCurrentAnalysis} disabled={!probs.length}>{t('common.saveAnalysis', 'Save analysis')}</button>
             </div>
 

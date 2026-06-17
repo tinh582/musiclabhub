@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { extractAudioFeatures } from '../utils/audioFeatures';
 
-export function useAudioFeatures(url) {
+export function useAudioFeatures(url, options = {}) {
+  const enabled = options.enabled ?? true;
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     let active = true;
-    if (!url) {
+    if (!url || !enabled) {
       setData(null);
       setError(null);
       setLoading(false);
@@ -33,7 +34,7 @@ export function useAudioFeatures(url) {
     return () => {
       active = false;
     };
-  }, [url]);
+  }, [url, enabled]);
 
   return { data, loading, error };
 }

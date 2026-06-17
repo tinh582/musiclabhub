@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocale } from '../i18n/LocaleProvider';
 import { useAudioFeatures } from '../hooks/useAudioFeatures';
 import { AIAnalysisStream } from './AIAnalysisStream';
+import { isLowPowerDevice } from '../utils/performanceMode';
 
 function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v));
@@ -23,6 +24,8 @@ export function VisualizationsLab({
   const spectroXRef = useRef(0);
   const objectUrlRef = useRef(null);
   const restoredStateRef = useRef(false);
+  const frameCounterRef = useRef(0);
+  const lowPowerMode = isLowPowerDevice();
 
   const oscRef = useRef(null);
   const spectrumRef = useRef(null);
@@ -34,18 +37,19 @@ export function VisualizationsLab({
   const [playing, setPlaying] = useState(false);
   const [peak, setPeak] = useState(0);
   const [vu, setVu] = useState(0);
-  const [fftSize, setFftSize] = useState(2048);
-  const [smoothing, setSmoothing] = useState(0.82);
+  const [fftSize, setFftSize] = useState(lowPowerMode ? 1024 : 2048);
+  const [smoothing, setSmoothing] = useState(lowPowerMode ? 0.74 : 0.82);
   const [minDb, setMinDb] = useState(-90);
   const [maxDb, setMaxDb] = useState(-10);
   const [oscZoom, setOscZoom] = useState(0.36);
   const [oscLineWidth, setOscLineWidth] = useState(2);
-  const [spectrumBars, setSpectrumBars] = useState(90);
+  const [spectrumBars, setSpectrumBars] = useState(lowPowerMode ? 42 : 90);
   const [spectrumFloor, setSpectrumFloor] = useState(0.06);
   const [spectroSpeed, setSpectroSpeed] = useState(1);
   const [spectroDecay, setSpectroDecay] = useState(0.03);
   const [spectroContrast, setSpectroContrast] = useState(1);
-  const { data: audioProfile, loading: profileLoading } = useAudioFeatures(sourceUrl);
+  const [analysisRequested, setAnalysisRequested] = useState(() => !lowPowerMode);
+  const { data: audioProfile, loading: profileLoading } = useAudioFeatures(sourceUrl, { enabled: analysisRequested && !!sourceUrl });
 
   const sampleTracks = [
     { label: 'Sample 1', url: '/audio/sample1.mp3' },
@@ -78,7 +82,7 @@ export function VisualizationsLab({
   }, []);
 
   useEffect(() => {
-    if (loadedLabel === 'No audio loaded') {
+    if (!lowPowerMode && loadedLabel === 'No audio loaded') {
       loadObjectUrl(sampleTracks[0].url, sampleTracks[0].label);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -91,6 +95,7 @@ export function VisualizationsLab({
     restoredStateRef.current = true;
     if (moduleState.sourceUrl) loadObjectUrl(moduleState.sourceUrl, moduleState.loadedLabel || 'Restored source');
     if (typeof moduleState.audioUrlInput === 'string') setAudioUrlInput(moduleState.audioUrlInput);
+    if (typeof moduleState.analysisRequested === 'boolean') setAnalysisRequested(moduleState.analysisRequested);
     if (Number.isFinite(moduleState.fftSize)) setFftSize(moduleState.fftSize);
     if (Number.isFinite(moduleState.smoothing)) setSmoothing(moduleState.smoothing);
     if (Number.isFinite(moduleState.minDb)) setMinDb(moduleState.minDb);
@@ -213,6 +218,12 @@ export function VisualizationsLab({
     const analyser = analyserRef.current;
     if (!analyser) return;
 
+    frameCounterRef.current += 1;
+    if (lowPowerMode && frameCounterRef.current % 2 === 1) {
+      rafRef.current = requestAnimationFrame(tick);
+      return;
+    }
+
     const timeData = new Uint8Array(analyser.fftSize);
     const freqData = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteTimeDomainData(timeData);
@@ -313,23 +324,27 @@ export function VisualizationsLab({
     if (!file) return;
     const url = URL.createObjectURL(file);
     loadObjectUrl(url, file.name, true);
+    setAnalysisRequested(true);
   }
 
   function loadRemoteUrl() {
     const trimmed = audioUrlInput.trim();
     if (!trimmed) return;
     loadObjectUrl(trimmed, 'URL source');
+    setAnalysisRequested(true);
   }
 
   function loadSampleByValue(value) {
     const track = sampleTracks.find((t) => t.url === value);
     if (!track) return;
     loadObjectUrl(track.url, track.label);
+    setAnalysisRequested(true);
   }
 
   useEffect(() => {
     if (!workspaceAudio?.url) return;
     loadObjectUrl(workspaceAudio.url, workspaceAudio.name);
+    setAnalysisRequested(true);
     // The workspace owns and revokes this object URL.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceAudio]);
@@ -402,6 +417,7 @@ export function VisualizationsLab({
       sourceUrl,
       loadedLabel,
       audioUrlInput,
+      analysisRequested,
       fftSize,
       smoothing,
       minDb,
@@ -418,6 +434,7 @@ export function VisualizationsLab({
     sourceUrl,
     loadedLabel,
     audioUrlInput,
+    analysisRequested,
     fftSize,
     smoothing,
     minDb,
@@ -458,6 +475,12 @@ export function VisualizationsLab({
               />
               <button type="button" className="button button--ghost" onClick={loadRemoteUrl}>{t('viz.loadUrl', 'Load URL')}</button>
             </div>
+            {lowPowerMode && !analysisRequested ? (
+              <button type="button" className="button button--ghost" onClick={() => setAnalysisRequested(true)}>
+                Analyze this source
+              </button>
+            ) : null}
+            {lowPowerMode ? <p className="practice-note">Low-power mode reduces animation work and waits before running deeper audio analysis.</p> : null}
             <audio ref={audioRef} onEnded={handleEnded} controls style={{ width: '100%' }} />
             <div className="viz-actions">
               <button type="button" className="button button--primary" onClick={startPlayback}>
