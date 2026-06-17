@@ -3515,3 +3515,254 @@ select {
     width: 100%;
   }
 }
+
+@media (max-width: 920px) {
+  .practice-room,
+  .transcription-lab,
+  .classification-lab,
+  .visualizations-lab,
+  .composer-lab,
+  .analytics-lab,
+  .effects-lab,
+  .instrument-lab {
+    padding: 18px;
+    border-radius: 18px;
+  }
+
+  .practice-layout,
+  .transcription-grid,
+  .classification-grid,
+  .visualizations-grid,
+  .composer-grid,
+  .analytics-grid,
+  .dashboard-feature-map,
+  .feature-space-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .practice-stage,
+  .practice-card,
+  .practice-meter__target,
+  .practice-meter__live,
+  .feature-selected-card,
+  .feature-metric-grid,
+  .feature-neighbor,
+  .feature-cluster,
+  .class-source-panel,
+  .composer-info,
+  .viz-card,
+  .meter-block {
+    min-width: 0;
+  }
+
+  .practice-stage__header,
+  .practice-sequence__heading,
+  .history-drawer__header,
+  .history-drawer__actions,
+  .history-item,
+  .history-item__actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .practice-meter {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .practice-log__item,
+  .detected-item,
+  .prob-item {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: flex-start;
+  }
+
+  .practice-log__item span,
+  .detected-item span,
+  .prob-item > span,
+  .prob-item > strong {
+    white-space: normal;
+  }
+
+  .feature-cluster-list,
+  .dashboard-sample-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .feature-metric-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .feature-neighbor,
+  .class-source-status,
+  .analysis-summary {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .analysis-summary,
+  .melody-stats {
+    gap: 8px;
+  }
+
+  .transcription-player__controls,
+  .composer-actions,
+  .practice-actions,
+  .viz-actions,
+  .controls-row {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .transcription-player__controls .button,
+  .transcription-player__controls .mini-button,
+  .viz-actions .button,
+  .viz-actions .mini-button,
+  .controls-row > * {
+    flex: 1 1 180px;
+  }
+
+  .class-source-grid,
+  .class-source-url,
+  .viz-url-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .feature-space-chart,
+  .dashboard-feature-chart {
+    overflow: hidden;
+  }
+
+  .feature-space-chart svg,
+  .dashboard-feature-chart svg {
+    min-height: 240px;
+  }
+
+  .history-list {
+    max-height: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .workspace-source__copy strong,
+  .class-source-status span,
+  .feature-selected-card strong,
+  .feature-neighbor strong,
+  .history-item strong,
+  .history-item span,
+  .history-item small,
+  .detected-item strong,
+  .detected-item span {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .practice-room,
+  .transcription-lab,
+  .classification-lab,
+  .visualizations-lab,
+  .composer-lab,
+  .analytics-lab,
+  .effects-lab,
+  .instrument-lab {
+    padding: 14px;
+    border-radius: 14px;
+  }
+
+  .practice-stage,
+  .practice-card,
+  .hero-card,
+  .panel {
+    padding: 14px;
+  }
+
+  .practice-stage h4,
+  .section-heading h4,
+  .hero-copy h3,
+  .topbar h2 {
+    overflow-wrap: anywhere;
+  }
+
+  .practice-gauge__track {
+    height: 62px;
+  }
+
+  .practice-gauge__needle {
+    height: 40px;
+  }
+
+  .target-grid,
+  .practice-sequence__notes {
+    gap: 6px;
+  }
+
+  .target-chip,
+  .mini-button,
+  .button,
+  .btn {
+    min-height: 40px;
+  }
+
+  .melody-stats {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .melody-note {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .viz-center {
+    min-height: 240px;
+    padding: 14px 8px 8px;
+  }
+
+  .viz-canvas,
+  .wave-canvas,
+  .piano-roll-canvas {
+    height: 110px;
+  }
+
+  .viz-canvas--tall {
+    height: 150px;
+  }
+
+  .transcription-player__controls .button,
+  .transcription-player__controls .mini-button,
+  .practice-sequence__controls .button,
+  .composer-actions .button,
+  .viz-actions .button,
+  .viz-actions .mini-button,
+  .controls-row > * {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .practice-sequence__controls,
+  .transcription-player__controls,
+  .viz-actions,
+  .controls-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .keyboard {
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+
+  .key.white {
+    width: 38px;
+    height: 124px;
+  }
+
+  .key.black {
+    width: 26px;
+    height: 88px;
+    margin-left: -10px;
+    margin-right: -10px;
+  }
+
+  .history-drawer {
+    padding: 12px 16px;
+  }
+}

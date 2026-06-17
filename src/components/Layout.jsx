@@ -35,6 +35,7 @@ export function Layout() {
   const [currentUserName, setCurrentUserName] = useState(null);
   const [workspaceAudio, setWorkspaceAudio] = useState(null);
   const [moduleHandoff, setModuleHandoff] = useState(null);
+  const [moduleWorkspaceState, setModuleWorkspaceState] = useState({});
   const [analysisHistory, setAnalysisHistory] = useState(() => readAnalysisHistory());
   const [historyOpen, setHistoryOpen] = useState(false);
   const workspaceUrlRef = useRef(null);
@@ -81,6 +82,24 @@ export function Layout() {
   };
 
   const clearModuleHandoff = () => setModuleHandoff(null);
+
+  const setModuleState = (slug, nextState) => {
+    if (!slug) return;
+    setModuleWorkspaceState((current) => ({
+      ...current,
+      [slug]: typeof nextState === 'function' ? nextState(current[slug] || null) : nextState,
+    }));
+  };
+
+  const clearModuleState = (slug) => {
+    if (!slug) return;
+    setModuleWorkspaceState((current) => {
+      if (!(slug in current)) return current;
+      const next = { ...current };
+      delete next[slug];
+      return next;
+    });
+  };
 
   const saveAnalysis = (entry) => {
     const nextEntry = createAnalysisEntry(entry);
@@ -341,6 +360,9 @@ export function Layout() {
             moduleHandoff,
             sendModuleHandoff,
             clearModuleHandoff,
+            moduleWorkspaceState,
+            setModuleState,
+            clearModuleState,
             analysisHistory,
             saveAnalysis,
           }} />

@@ -5,7 +5,14 @@ import { useAudioFeatures } from '../hooks/useAudioFeatures';
 import { equalPowerMix, processingHeadroom, PROCESSING_QUALITY, qualityConfig } from '../utils/audioProcessing';
 import { AIAnalysisStream } from './AIAnalysisStream';
 
-export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleHandoff = null, clearModuleHandoff = null }) {
+export function EffectsLab({
+  workspaceAudio = null,
+  saveAnalysis = null,
+  moduleHandoff = null,
+  clearModuleHandoff = null,
+  moduleState = null,
+  setModuleState = null,
+}) {
   const { t } = useLocale();
   const localizedCatalog = buildCatalog(t);
   const [fileUrl, setFileUrl] = useState((localizedCatalog && localizedCatalog[0] && localizedCatalog[0].audioUrl) || '/audio/sample1.mp3');
@@ -42,6 +49,19 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleH
       if (downloadUrl) URL.revokeObjectURL(downloadUrl);
     };
   }, []);
+
+  useEffect(() => {
+    if (!moduleState) return;
+    if (moduleState.fileUrl) setFileUrl(moduleState.fileUrl);
+    if (Number.isFinite(moduleState.wet)) setWet(moduleState.wet);
+    if (Number.isFinite(moduleState.delayTime)) setDelayTime(moduleState.delayTime);
+    if (Number.isFinite(moduleState.feedback)) setFeedback(moduleState.feedback);
+    if (Number.isFinite(moduleState.cutoff)) setCutoff(moduleState.cutoff);
+    if (Number.isFinite(moduleState.distortion)) setDistortion(moduleState.distortion);
+    if (Number.isFinite(moduleState.reverbSize)) setReverbSize(moduleState.reverbSize);
+    if (moduleState.quality && PROCESSING_QUALITY[moduleState.quality]) setQuality(moduleState.quality);
+    if (Number.isFinite(moduleState.outputLevel)) setOutputLevel(moduleState.outputLevel);
+  }, [moduleState]);
 
   useEffect(() => {
     if (!workspaceAudio?.url) return;
@@ -270,6 +290,20 @@ export function EffectsLab({ workspaceAudio = null, saveAnalysis = null, moduleH
     window.addEventListener('pointerdown', unlockFromGesture, { passive: true });
     return () => window.removeEventListener('pointerdown', unlockFromGesture);
   }, []);
+
+  useEffect(() => {
+    setModuleState?.({
+      fileUrl,
+      wet,
+      delayTime,
+      feedback,
+      cutoff,
+      distortion,
+      reverbSize,
+      quality,
+      outputLevel,
+    });
+  }, [fileUrl, wet, delayTime, feedback, cutoff, distortion, reverbSize, quality, outputLevel, setModuleState]);
 
   function startRecording() {
     if (!nodesRef.current || !nodesRef.current.mediaStream) return;

@@ -7,7 +7,14 @@ function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v));
 }
 
-export function VisualizationsLab({ workspaceAudio = null, saveAnalysis = null, moduleHandoff = null, clearModuleHandoff = null }) {
+export function VisualizationsLab({
+  workspaceAudio = null,
+  saveAnalysis = null,
+  moduleHandoff = null,
+  clearModuleHandoff = null,
+  moduleState = null,
+  setModuleState = null,
+}) {
   const audioRef = useRef(null);
   const audioCtxRef = useRef(null);
   const analyserRef = useRef(null);
@@ -15,6 +22,7 @@ export function VisualizationsLab({ workspaceAudio = null, saveAnalysis = null, 
   const rafRef = useRef(null);
   const spectroXRef = useRef(0);
   const objectUrlRef = useRef(null);
+  const restoredStateRef = useRef(false);
 
   const oscRef = useRef(null);
   const spectrumRef = useRef(null);
@@ -63,7 +71,6 @@ export function VisualizationsLab({ workspaceAudio = null, saveAnalysis = null, 
   useEffect(() => {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
       if (audioCtxRef.current) {
         try { audioCtxRef.current.close(); } catch (e) {}
       }
@@ -78,6 +85,24 @@ export function VisualizationsLab({ workspaceAudio = null, saveAnalysis = null, 
   }, []);
 
   const { t } = useLocale();
+
+  useEffect(() => {
+    if (!moduleState || restoredStateRef.current) return;
+    restoredStateRef.current = true;
+    if (moduleState.sourceUrl) loadObjectUrl(moduleState.sourceUrl, moduleState.loadedLabel || 'Restored source');
+    if (typeof moduleState.audioUrlInput === 'string') setAudioUrlInput(moduleState.audioUrlInput);
+    if (Number.isFinite(moduleState.fftSize)) setFftSize(moduleState.fftSize);
+    if (Number.isFinite(moduleState.smoothing)) setSmoothing(moduleState.smoothing);
+    if (Number.isFinite(moduleState.minDb)) setMinDb(moduleState.minDb);
+    if (Number.isFinite(moduleState.maxDb)) setMaxDb(moduleState.maxDb);
+    if (Number.isFinite(moduleState.oscZoom)) setOscZoom(moduleState.oscZoom);
+    if (Number.isFinite(moduleState.oscLineWidth)) setOscLineWidth(moduleState.oscLineWidth);
+    if (Number.isFinite(moduleState.spectrumBars)) setSpectrumBars(moduleState.spectrumBars);
+    if (Number.isFinite(moduleState.spectrumFloor)) setSpectrumFloor(moduleState.spectrumFloor);
+    if (Number.isFinite(moduleState.spectroSpeed)) setSpectroSpeed(moduleState.spectroSpeed);
+    if (Number.isFinite(moduleState.spectroDecay)) setSpectroDecay(moduleState.spectroDecay);
+    if (Number.isFinite(moduleState.spectroContrast)) setSpectroContrast(moduleState.spectroContrast);
+  }, [moduleState]);
 
   function ensureAudioGraph() {
     const audio = audioRef.current;
@@ -371,6 +396,41 @@ export function VisualizationsLab({ workspaceAudio = null, saveAnalysis = null, 
   const vuPct = clamp(Math.round(vu * 100), 0, 100);
   const ballScale = (1 + peak * 0.28).toFixed(3);
   const ballGlow = (0.22 + vu * 0.85).toFixed(3);
+
+  useEffect(() => {
+    setModuleState?.({
+      sourceUrl,
+      loadedLabel,
+      audioUrlInput,
+      fftSize,
+      smoothing,
+      minDb,
+      maxDb,
+      oscZoom,
+      oscLineWidth,
+      spectrumBars,
+      spectrumFloor,
+      spectroSpeed,
+      spectroDecay,
+      spectroContrast,
+    });
+  }, [
+    sourceUrl,
+    loadedLabel,
+    audioUrlInput,
+    fftSize,
+    smoothing,
+    minDb,
+    maxDb,
+    oscZoom,
+    oscLineWidth,
+    spectrumBars,
+    spectrumFloor,
+    spectroSpeed,
+    spectroDecay,
+    spectroContrast,
+    setModuleState,
+  ]);
 
   return (
     <section className="visualizations-lab">

@@ -71,7 +71,13 @@ function snapToScale(midi, root, scale) {
   return best;
 }
 
-export function ComposerLab({ moduleHandoff = null, sendModuleHandoff = null, clearModuleHandoff = null }) {
+export function ComposerLab({
+  moduleHandoff = null,
+  sendModuleHandoff = null,
+  clearModuleHandoff = null,
+  moduleState = null,
+  setModuleState = null,
+}) {
   const navigate = useNavigate();
   const [seedNote, setSeedNote] = useState('C');
   const [seedOctave, setSeedOctave] = useState(4);
@@ -106,6 +112,14 @@ export function ComposerLab({ moduleHandoff = null, sendModuleHandoff = null, cl
     clearModuleHandoff?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleHandoff]);
+
+  useEffect(() => {
+    if (!moduleState) return;
+    if (Array.isArray(moduleState.melody) && moduleState.melody.length) setMelody(moduleState.melody);
+    if (typeof moduleState.importStatus === 'string') setImportStatus(moduleState.importStatus);
+    if (typeof moduleState.playbackStatus === 'string') setPlaybackStatus(moduleState.playbackStatus);
+    if (typeof moduleState.midiXml === 'string') midiXmlRef.current = moduleState.midiXml;
+  }, [moduleState]);
 
   function generateMelody() {
     const seed = `${seedNote}${seedOctave}`;
@@ -384,6 +398,15 @@ export function ComposerLab({ moduleHandoff = null, sendModuleHandoff = null, cl
   useEffect(() => () => {
     playbackCleanupRef.current?.();
   }, []);
+
+  useEffect(() => {
+    setModuleState?.({
+      melody,
+      importStatus,
+      playbackStatus,
+      midiXml: midiXmlRef.current,
+    });
+  }, [melody, importStatus, playbackStatus, setModuleState]);
 
   return (
     <section className="composer-lab">

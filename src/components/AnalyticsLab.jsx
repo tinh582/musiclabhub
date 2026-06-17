@@ -83,7 +83,13 @@ function clusterTracks(tracks, clusterCount = 3, iterations = 12) {
   });
 }
 
-export function AnalyticsLab({ saveAnalysis = null, moduleHandoff = null, clearModuleHandoff = null }) {
+export function AnalyticsLab({
+  saveAnalysis = null,
+  moduleHandoff = null,
+  clearModuleHandoff = null,
+  moduleState = null,
+  setModuleState = null,
+}) {
   const { t } = useLocale();
   const [dataset, setDataset] = useState(() => buildCatalog(t || ((k, f) => f)));
   const [selectedGenres, setSelectedGenres] = useState(null);
@@ -155,6 +161,13 @@ export function AnalyticsLab({ saveAnalysis = null, moduleHandoff = null, clearM
     clearModuleHandoff?.();
   }, [moduleHandoff, clearModuleHandoff]);
 
+  useEffect(() => {
+    if (!moduleState) return;
+    if (Array.isArray(moduleState.dataset) && moduleState.dataset.length) setDataset(moduleState.dataset);
+    setSelectedGenres(Array.isArray(moduleState.selectedGenres) ? moduleState.selectedGenres : null);
+    if (Array.isArray(moduleState.tempoRange) && moduleState.tempoRange.length === 2) setTempoRange(moduleState.tempoRange);
+  }, [moduleState]);
+
   function handleFile(e) {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
@@ -194,6 +207,14 @@ export function AnalyticsLab({ saveAnalysis = null, moduleHandoff = null, clearM
       snapshot: { dataset, selectedGenres, tempoRange },
     });
   }
+
+  useEffect(() => {
+    setModuleState?.({
+      dataset,
+      selectedGenres,
+      tempoRange,
+    });
+  }, [dataset, selectedGenres, tempoRange, setModuleState]);
 
   function downloadSVG(svgEl, name) {
     if (!svgEl) return;

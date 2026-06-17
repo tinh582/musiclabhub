@@ -37,7 +37,14 @@ function formatTempoInfo(audioInfo, selected, customSource) {
   return `${audioInfo.tempo} BPM`;
 }
 
-export function ClassificationLab({ workspaceAudio = null, saveAnalysis = null, moduleHandoff = null, clearModuleHandoff = null }) {
+export function ClassificationLab({
+  workspaceAudio = null,
+  saveAnalysis = null,
+  moduleHandoff = null,
+  clearModuleHandoff = null,
+  moduleState = null,
+  setModuleState = null,
+}) {
   const { t } = useLocale();
   const localizedCatalog = buildCatalog(t);
   const [selectedId, setSelectedId] = useState(localizedCatalog[0].id);
@@ -232,9 +239,14 @@ export function ClassificationLab({ workspaceAudio = null, saveAnalysis = null, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, customTrack]);
 
-  useEffect(() => () => {
-    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-  }, []);
+  useEffect(() => {
+    if (!moduleState) return;
+    if (moduleState.customSource) setCustomSource(moduleState.customSource);
+    if (typeof moduleState.audioUrlInput === 'string') setAudioUrlInput(moduleState.audioUrlInput);
+    if (moduleState.selectedId) setSelectedId(moduleState.selectedId);
+    if (Array.isArray(moduleState.probs)) setProbs(moduleState.probs);
+    if (moduleState.evaluation) setEvaluation(moduleState.evaluation);
+  }, [moduleState]);
 
   useEffect(() => {
     if (!workspaceAudio?.url) return;
@@ -379,6 +391,16 @@ export function ClassificationLab({ workspaceAudio = null, saveAnalysis = null, 
     if (track.id !== customTrack?.id) clearCustomSource();
     setSelectedId(track.id);
   }
+
+  useEffect(() => {
+    setModuleState?.({
+      selectedId,
+      audioUrlInput,
+      customSource,
+      probs,
+      evaluation,
+    });
+  }, [selectedId, audioUrlInput, customSource, probs, evaluation, setModuleState]);
 
   function saveCurrentAnalysis() {
     if (!selected || !probs.length || !saveAnalysis) return;

@@ -31,6 +31,9 @@ export function FeaturePage() {
     moduleHandoff,
     sendModuleHandoff,
     clearModuleHandoff,
+    moduleWorkspaceState,
+    setModuleState,
+    clearModuleState,
     saveAnalysis,
   } = useOutletContext();
   const page = featurePages.find((item) => item.slug === slug);
@@ -84,6 +87,9 @@ export function FeaturePage() {
             moduleHandoff={moduleHandoff}
             sendModuleHandoff={sendModuleHandoff}
             clearModuleHandoff={clearModuleHandoff}
+            moduleState={moduleWorkspaceState?.[slug] || null}
+            setModuleState={(nextState) => setModuleState?.(slug, nextState)}
+            clearModuleState={() => clearModuleState?.(slug)}
             saveAnalysis={saveAnalysis}
           />
         </Suspense>

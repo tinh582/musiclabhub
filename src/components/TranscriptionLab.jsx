@@ -130,6 +130,8 @@ export function TranscriptionLab({
   saveAnalysis = null,
   moduleHandoff = null,
   clearModuleHandoff = null,
+  moduleState = null,
+  setModuleState = null,
 }) {
   const navigate = useNavigate();
   const fileRef = useRef(null);
@@ -219,10 +221,6 @@ export function TranscriptionLab({
         workerRef.current.terminate();
         workerRef.current = null;
       }
-      if (audioUrlRef.current) {
-        URL.revokeObjectURL(audioUrlRef.current);
-        audioUrlRef.current = null;
-      }
       if (playbackTimeoutRef.current) {
         clearTimeout(playbackTimeoutRef.current);
         playbackTimeoutRef.current = null;
@@ -251,6 +249,25 @@ export function TranscriptionLab({
     if (Number.isFinite(snapshot.swing)) setSwing(snapshot.swing);
     clearModuleHandoff?.();
   }, [moduleHandoff, clearModuleHandoff]);
+
+  useEffect(() => {
+    if (!moduleState) return;
+    if (Array.isArray(moduleState.notes)) setNotes(moduleState.notes);
+    if (Number.isFinite(moduleState.bufferDuration)) setBufferDuration(moduleState.bufferDuration);
+    if (typeof moduleState.xmlPreview === 'string') setXmlPreview(moduleState.xmlPreview);
+    if (moduleState.analysisSummary) setAnalysisSummary(moduleState.analysisSummary);
+    if (typeof moduleState.modelMidiBase64 === 'string') setModelMidiBase64(moduleState.modelMidiBase64);
+    if (typeof moduleState.modelMidiFileName === 'string') setModelMidiFileName(moduleState.modelMidiFileName);
+    if (Number.isFinite(moduleState.tempo)) setTempo(moduleState.tempo);
+    if (typeof moduleState.tempoSource === 'string') setTempoSource(moduleState.tempoSource);
+    if (Number.isFinite(moduleState.resolution)) setResolution(moduleState.resolution);
+    if (typeof moduleState.triplet === 'boolean') setTriplet(moduleState.triplet);
+    if (Number.isFinite(moduleState.swing)) setSwing(moduleState.swing);
+    if (moduleState.playbackUrl && audioRef.current && audioRef.current.src !== moduleState.playbackUrl) {
+      audioUrlRef.current = moduleState.playbackUrl;
+      audioRef.current.src = moduleState.playbackUrl;
+    }
+  }, [moduleState]);
 
   function buildHandoffMelody() {
     return notes
@@ -579,6 +596,36 @@ export function TranscriptionLab({
     });
     return q;
   }
+
+  useEffect(() => {
+    setModuleState?.({
+      notes,
+      bufferDuration,
+      xmlPreview,
+      analysisSummary,
+      modelMidiBase64,
+      modelMidiFileName,
+      tempo,
+      tempoSource,
+      resolution,
+      triplet,
+      swing,
+      playbackUrl: audioUrlRef.current || audioRef.current?.src || '',
+    });
+  }, [
+    notes,
+    bufferDuration,
+    xmlPreview,
+    analysisSummary,
+    modelMidiBase64,
+    modelMidiFileName,
+    tempo,
+    tempoSource,
+    resolution,
+    triplet,
+    swing,
+    setModuleState,
+  ]);
 
   function preparePlayableMelody(events, tempoBPM, resolutionInput = 16) {
     if (!events?.length) return [];
