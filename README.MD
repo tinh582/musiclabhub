@@ -57,52 +57,52 @@ This project consists of a React Frontend and a dual-service Backend (Node.js & 
 - A **Spotify Developer** account (for API credentials)
 
 ### 1. Clone the repository
-\`\`\`bash
+```bash
 git clone https://github.com/yourusername/music-lab-hub.git
 cd music-lab-hub
-\`\`\`
+```
 
 ### 2. Environment Setup
 Create a `.env` file in the root directory based on the provided `.env.example`:
-\`\`\`env
+```env
 VITE_API_BASE=https://localhost:5174
 SPOTIFY_CLIENT_ID=your_spotify_client_id
 SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
 SPOTIFY_REDIRECT_URI=https://localhost:5173/callback
-\`\`\`
+```
 
 ### 3. Frontend Setup (React/Vite)
-\`\`\`bash
+```bash
 # Install dependencies
 npm install
 
 # Start the Vite development server
 npm run dev
-\`\`\`
+```
 
 ### 4. Backend Setup - API Gateway (Node.js)
-\`\`\`bash
+```bash
 cd server
 npm install
 npm start
 # Runs the Express proxy on port 5174
-\`\`\`
+```
 
 ### 5. Backend Setup - AI Core (Python/Flask)
 You can run the AI service locally or via Docker.
 
 **Option A: Local Python Environment**
-\`\`\`bash
+```bash
 cd server
 pip install -r requirements.txt
 gunicorn -b 0.0.0.0:8000 transcription_service:app
-\`\`\`
+```
 
 **Option B: Docker (Recommended)**
-\`\`\`bash
+```bash
 docker build -f Dockerfile.transcription -t mlh-ai-core .
 docker run -p 8000:8000 mlh-ai-core
-\`\`\`
+```
 
 ---
 
@@ -110,7 +110,7 @@ docker run -p 8000:8000 mlh-ai-core
 
 A high-level overview of the workspace organization:
 
-\`\`\`text
+```text
 music-lab-hub/
 ├── public/                     # Static assets and audio samples
 ├── src/
@@ -127,7 +127,7 @@ music-lab-hub/
 │   └── Dockerfile.transcription # Docker config for the AI container
 ├── .env.example                # Environment variables template
 └── package.json
-\`\`\`
+```
 
 ## 🛡️ License
 
